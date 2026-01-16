@@ -1,0 +1,58 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Connection {
+  id               String   @id @default(cuid())
+  name             String
+  connectionString String
+  userId           String
+  readonly         Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String
+  actionName String
+  params     Json?
+  success    Boolean
+  error      String?
+  timestamp  DateTime @default(now())
+
+  @@index([userId])
+  @@index([timestamp])
+}
+
+model Dashboard {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  userId      String
+  layout      Json     @default("{}")
+  widgets     Json     @default("[]")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  connections DashboardConnection[]
+
+  @@index([userId])
+}
+
+model DashboardConnection {
+  id           String    @id @default(cuid())
+  dashboardId  String
+  connectionId String
+  dashboard    Dashboard @relation(fields: [dashboardId], references: [id], onDelete: Cascade)
+
+  @@unique([dashboardId, connectionId])
+  @@index([dashboardId])
+}

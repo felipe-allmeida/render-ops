@@ -1,0 +1,177 @@
+{
+  "type": "Card",
+  "props": {
+    "title": "Edit Customer",
+    "padding": "md"
+  },
+  "children": [
+    {
+      "type": "Form",
+      "props": {
+        "id": "customerForm",
+        "dataPath": "/form",
+        "onSubmit": {
+          "name": "db_update",
+          "params": {
+            "connectionId": "conn_123",
+            "table": "customers",
+            "id": { "path": "/form/id" },
+            "data": { "path": "/form" }
+          },
+          "confirm": {
+            "title": "Save Changes",
+            "message": "Are you sure you want to save these changes?",
+            "variant": "default"
+          },
+          "onSuccess": {
+            "set": {
+              "/ui/successMessage": "Customer updated successfully!",
+              "/ui/showEditModal": false
+            }
+          },
+          "onError": {
+            "set": {
+              "/ui/errorMessage": "$error.message"
+            }
+          }
+        }
+      },
+      "children": [
+        {
+          "type": "TextField",
+          "props": {
+            "label": "Name",
+            "valuePath": "/form/name",
+            "required": true,
+            "checks": [
+              { "fn": "required", "message": "Name is required" },
+              { "fn": "minLength", "value": 2, "message": "Name must be at least 2 characters" }
+            ],
+            "validateOn": "blur"
+          }
+        },
+        {
+          "type": "TextField",
+          "props": {
+            "label": "Email",
+            "valuePath": "/form/email",
+            "type": "email",
+            "required": true,
+            "checks": [
+              { "fn": "required", "message": "Email is required" },
+              { "fn": "email", "message": "Please enter a valid email address" }
+            ],
+            "validateOn": "blur"
+          }
+        },
+        {
+          "type": "TextField",
+          "props": {
+            "label": "Phone",
+            "valuePath": "/form/phone",
+            "type": "tel",
+            "placeholder": "+55 11 99999-9999"
+          }
+        },
+        {
+          "type": "TextField",
+          "props": {
+            "label": "Address",
+            "valuePath": "/form/address",
+            "multiline": true,
+            "rows": 3
+          }
+        },
+        {
+          "type": "TextField",
+          "props": {
+            "label": "City",
+            "valuePath": "/form/city"
+          }
+        },
+        {
+          "type": "SelectField",
+          "props": {
+            "label": "Country",
+            "valuePath": "/form/country",
+            "options": [
+              { "value": "Brazil", "label": "Brazil" },
+              { "value": "Argentina", "label": "Argentina" },
+              { "value": "Chile", "label": "Chile" },
+              { "value": "Colombia", "label": "Colombia" }
+            ],
+            "placeholder": "Select a country"
+          }
+        },
+        {
+          "type": "SelectField",
+          "props": {
+            "label": "Active",
+            "valuePath": "/form/is_active",
+            "required": true,
+            "options": [
+              { "value": true, "label": "Yes" },
+              { "value": false, "label": "No" }
+            ]
+          }
+        },
+        {
+          "type": "Spacer",
+          "props": { "size": "md" }
+        },
+        {
+          "type": "Row",
+          "props": { "gap": "sm", "justify": "end" },
+          "children": [
+            {
+              "type": "Button",
+              "props": {
+                "label": "Cancel",
+                "variant": "secondary",
+                "action": {
+                  "name": "set_data",
+                  "params": {
+                    "path": "/ui/showEditModal",
+                    "value": false
+                  }
+                }
+              }
+            },
+            {
+              "type": "Button",
+              "props": {
+                "label": "Save Changes",
+                "variant": "primary",
+                "action": {
+                  "name": "db_update",
+                  "params": {
+                    "connectionId": "conn_123",
+                    "table": "customers",
+                    "id": { "path": "/form/id" },
+                    "data": { "path": "/form" }
+                  },
+                  "confirm": {
+                    "title": "Confirm Save",
+                    "message": "Save changes to this customer?",
+                    "variant": "default"
+                  },
+                  "onSuccess": {
+                    "set": {
+                      "/ui/successMessage": "Customer saved!",
+                      "/ui/showEditModal": false
+                    }
+                  },
+                  "onError": {
+                    "set": {
+                      "/ui/errorMessage": "$error.message"
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "type": "Button",
+  "props": {
+    "label": "Delete Customer",
+    "variant": "danger",
+    "action": {
+      "name": "db_delete",
+      "params": {
+        "connectionId": "conn_123",
+        "table": "customers",
+        "id": { "path": "/selected/id" }
+      },
+      "confirm": {
+        "title": "Confirm Delete",
+        "message": "Are you sure you want to delete this customer? This action cannot be undone.",
+        "variant": "danger"
+      },
+      "onSuccess": {
+        "set": {
+          "/ui/success": true,
+          "/ui/successMessage": "Customer deleted successfully",
+          "/selected": null
+        }
+      },
+      "onError": {
+        "set": {
+          "/ui/error": true,
+          "/ui/errorMessage": "$error.message"
+        }
+      }
+    }
+  }
+}

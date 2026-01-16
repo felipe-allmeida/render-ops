@@ -1,0 +1,114 @@
+{
+  "type": "Page",
+  "props": {
+    "title": "Customers Management",
+    "subtitle": "View and manage customers records"
+  },
+  "children": [
+    {
+      "type": "Alert",
+      "props": {
+        "message": "",
+        "variant": "success",
+        "dismissible": true,
+        "dismissPath": "/ui/successDismissed"
+      },
+      "visible": { "path": "/ui/successMessage" }
+    },
+    {
+      "type": "Alert",
+      "props": {
+        "message": "",
+        "variant": "error",
+        "dismissible": true,
+        "dismissPath": "/ui/errorDismissed"
+      },
+      "visible": { "path": "/ui/errorMessage" }
+    },
+    {
+      "type": "Section",
+      "props": { "title": "Records" },
+      "children": [
+        {
+          "type": "Card",
+          "props": { "title": "List", "padding": "none" },
+          "children": [
+            {
+              "type": "Row",
+              "props": { "gap": "sm", "justify": "end" },
+              "children": [
+                {
+                  "type": "Button",
+                  "props": {
+                    "label": "Refresh",
+                    "variant": "secondary",
+                    "action": {
+                      "name": "db_list",
+                      "params": {
+                        "connectionId": "conn_123",
+                        "table": "customers",
+                        "page": 1,
+                        "limit": 20
+                      },
+                      "onSuccess": {
+                        "set": { "/data/items": "$result" }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "Button",
+                  "props": {
+                    "label": "Create New",
+                    "variant": "primary",
+                    "action": {
+                      "name": "set_data",
+                      "params": {
+                        "path": "/form",
+                        "value": {}
+                      },
+                      "onSuccess": {
+                        "set": { "/ui/showCreateModal": true }
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "type": "Table",
+              "props": {
+                "columns": [
+                  { "key": "id", "label": "Id", "type": "number" },
+                  { "key": "name", "label": "Name", "type": "text" },
+                  { "key": "email", "label": "Email", "type": "text" },
+                  { "key": "phone", "label": "Phone", "type": "text" },
+                  { "key": "city", "label": "City", "type": "text" },
+                  { "key": "is_active", "label": "Is Active", "type": "boolean" }
+                ],
+                "dataPath": "/data/items",
+                "rowKey": "id",
+                "emptyMessage": "No records found. Click \"Create New\" to add one.",
+                "rowActions": [
+                  {
+                    "name": "db_get",
+                    "params": { "connectionId": "conn_123", "table": "customers" }
+                  },
+                  {
+                    "name": "db_delete",
+                    "params": { "connectionId": "conn_123", "table": "customers" },
+                    "confirm": {
+                      "title": "Confirm Delete",
+                      "message": "Are you sure you want to delete this record?",
+                      "variant": "danger"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
