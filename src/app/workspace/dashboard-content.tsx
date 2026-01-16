@@ -1,9 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { signOut } from 'next-auth/react';
 import Link from 'next/link';
 import { DynamicUI } from './dynamic-ui';
+import { Widget, WidgetRenderer } from '@/lib/dashboard-components';
 
 interface User {
   id: string;
@@ -28,6 +30,14 @@ interface DashboardInfo {
   name: string;
   description?: string | null;
   updatedAt: string;
+}
+
+interface DashboardFull {
+  id: string;
+  name: string;
+  description?: string | null;
+  layout: { columns: number; rowHeight: number };
+  widgets: Widget[];
 }
 
 interface DashboardContentProps {
@@ -118,17 +128,52 @@ const DATABASE_TYPES = [
 ];
 
 export function DashboardContent({ user }: DashboardContentProps) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // Get current view from URL
+  const currentView = searchParams.get('view'); // 'table' | 'dashboard' | 'settings' | null
+  const selectedTable = currentView === 'table' ? searchParams.get('name') : null;
+  const selectedDashboard = currentView === 'dashboard' ? searchParams.get('id') : null;
+  const showSettings = currentView === 'settings';
+
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [activeIntegration, setActiveIntegration] = useState<Integration | null>(null);
   const [tables, setTables] = useState<TableInfo[]>([]);
-  const [selectedTable, setSelectedTable] = useState<string | null>(null);
   const [dashboards, setDashboards] = useState<DashboardInfo[]>([]);
-  const [selectedDashboard, setSelectedDashboard] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingTables, setIsLoadingTables] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showIntegrationModal, setShowIntegrationModal] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
+
+  // Navigation helpers
+  const navigateTo = useCallback((view: string | null, params?: Record<string, string>) => {
+    if (!view) {
+      router.push('/workspace');
+      return;
+    }
+    const urlParams = new URLSearchParams();
+    urlParams.set('view', view);
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => urlParams.set(key, value));
+    }
+    router.push(`/workspace?${urlParams.toString()}`);
+  }, [router]);
+
+  const navigateToTable = useCallback((tableName: string) => {
+    navigateTo('table', { name: tableName });
+    setSidebarOpen(false);
+  }, [navigateTo]);
+
+  const navigateToDashboard = useCallback((dashboardId: string) => {
+    navigateTo('dashboard', { id: dashboardId });
+    setSidebarOpen(false);
+  }, [navigateTo]);
+
+  const navigateToSettings = useCallback(() => {
+    navigateTo('settings');
+    setSidebarOpen(false);
+  }, [navigateTo]);
 
   // Integration form state
   const [formData, setFormData] = useState({
@@ -276,8 +321,8 @@ export function DashboardContent({ user }: DashboardContentProps) {
       if (response.ok) {
         if (activeIntegration?.id === id) {
           setActiveIntegration(null);
-          setSelectedTable(null);
           setTables([]);
+          navigateTo(null);
         }
         await fetchIntegrations();
       }
@@ -437,10 +482,10 @@ export function DashboardContent({ user }: DashboardContentProps) {
 
   // Main Portal Layout - Has integrations
   return (
-    <div className="min-h-screen bg-gray-50 flex">
+    <div className="min-h-screen md:h-screen bg-gray-50 flex md:overflow-hidden">
       {/* Sidebar */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 w-64 bg-white border-r border-gray-200 transform transition-transform duration-200 ease-in-out lg:translate-x-0 lg:static lg:inset-auto ${
+        className={`fixed inset-y-0 left-0 z-50 w-64 bg-white border-r border-gray-200 transform transition-transform duration-200 ease-in-out lg:translate-x-0 lg:static lg:inset-auto lg:h-full lg:flex-shrink-0 overflow-hidden ${
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
@@ -462,7 +507,7 @@ export function DashboardContent({ user }: DashboardContentProps) {
                   const integration = integrations.find((i) => i.id === e.target.value);
                   if (integration) {
                     setActiveIntegration(integration);
-                    setSelectedTable(null);
+                    navigateTo(null);
                   }
                 }}
                 className="w-full px-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/20"
@@ -476,8 +521,8 @@ export function DashboardContent({ user }: DashboardContentProps) {
             </div>
           )}
 
-          {/* Sidebar Content */}
-          <div className="flex-1 overflow-y-auto py-3">
+          {/* Sidebar Content - scrollable middle section */}
+          <div className="flex-1 min-h-0 overflow-y-auto py-3">
             {/* Dashboards Section */}
             <div className="mb-4">
               <div className="px-3 mb-2 flex items-center justify-between">
@@ -517,14 +562,18 @@ export function DashboardContent({ user }: DashboardContentProps) {
               ) : (
                 <nav className="px-2 space-y-1">
                   {dashboards.map((dashboard) => (
-                    <Link
+                    <button
                       key={dashboard.id}
-                      href={`/dashboards/${dashboard.id}`}
-                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors text-gray-700 hover:bg-gray-50"
+                      onClick={() => navigateToDashboard(dashboard.id)}
+                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors ${
+                        selectedDashboard === dashboard.id
+                          ? 'bg-primary-50 text-primary-700 font-medium'
+                          : 'text-gray-700 hover:bg-gray-50'
+                      }`}
                     >
                       <span className="text-gray-400">{Icons.chart}</span>
                       <span className="truncate">{dashboard.name}</span>
-                    </Link>
+                    </button>
                   ))}
                   <Link
                     href="/dashboards/new"
@@ -577,11 +626,7 @@ export function DashboardContent({ user }: DashboardContentProps) {
                     <div className="text-gray-400 mb-2">{Icons.table}</div>
                     <p className="text-xs text-gray-500 mb-2">No tables found</p>
                     <button
-                      onClick={() => {
-                        setShowSettings(true);
-                        setSelectedTable(null);
-                        setSidebarOpen(false);
-                      }}
+                      onClick={navigateToSettings}
                       className="inline-flex items-center gap-1 text-xs font-medium text-primary-600 hover:text-primary-700"
                     >
                       {Icons.database}
@@ -594,14 +639,9 @@ export function DashboardContent({ user }: DashboardContentProps) {
                   {tables.map((table) => (
                     <button
                       key={table.name}
-                      onClick={() => {
-                        setSelectedTable(table.name);
-                        setSelectedDashboard(null);
-                        setShowSettings(false);
-                        setSidebarOpen(false);
-                      }}
+                      onClick={() => navigateToTable(table.name)}
                       className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors ${
-                        selectedTable === table.name && !showSettings
+                        selectedTable === table.name
                           ? 'bg-primary-50 text-primary-700 font-medium'
                           : 'text-gray-700 hover:bg-gray-50'
                       }`}
@@ -616,13 +656,9 @@ export function DashboardContent({ user }: DashboardContentProps) {
           </div>
 
           {/* Bottom Section */}
-          <div className="border-t border-gray-100 p-3 space-y-1">
+          <div className="flex-shrink-0 border-t border-gray-100 p-3 space-y-1">
             <button
-              onClick={() => {
-                setShowSettings(true);
-                setSelectedTable(null);
-                setSidebarOpen(false);
-              }}
+              onClick={navigateToSettings}
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors ${
                 showSettings
                   ? 'bg-gray-100 text-gray-900 font-medium'
@@ -642,7 +678,7 @@ export function DashboardContent({ user }: DashboardContentProps) {
           </div>
 
           {/* User Info */}
-          <div className="px-4 py-3 border-t border-gray-100 bg-gray-50/50">
+          <div className="flex-shrink-0 px-4 py-3 border-t border-gray-100 bg-gray-50/50">
             <div className="text-sm font-medium text-gray-900 truncate">
               {user.name || 'User'}
             </div>
@@ -660,7 +696,7 @@ export function DashboardContent({ user }: DashboardContentProps) {
       )}
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 md:min-h-0">
         {/* Mobile Header */}
         <header className="lg:hidden bg-white border-b border-gray-200 sticky top-0 z-30">
           <div className="flex items-center justify-between px-4 h-14">
@@ -670,11 +706,13 @@ export function DashboardContent({ user }: DashboardContentProps) {
             >
               {Icons.menu}
             </button>
-            <span className="font-semibold text-gray-900">
+            <span className="font-semibold text-gray-900 truncate max-w-[200px]">
               {showSettings
                 ? 'Integrations'
                 : selectedTable
                 ? formatTableName(selectedTable)
+                : selectedDashboard
+                ? dashboards.find(d => d.id === selectedDashboard)?.name || 'Dashboard'
                 : 'Select a table'}
             </span>
             <div className="w-10" /> {/* Spacer */}
@@ -682,10 +720,10 @@ export function DashboardContent({ user }: DashboardContentProps) {
         </header>
 
         {/* Page Content */}
-        <main className="flex-1 overflow-auto">
+        <main className="flex-1 md:min-h-0 flex flex-col overflow-y-auto md:overflow-hidden">
           {showSettings ? (
             /* Settings / Integrations Page */
-            <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <div className="flex-1 overflow-auto max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
               <div className="flex items-center justify-between mb-6">
                 <div>
                   <h1 className="text-2xl font-bold text-gray-900">Integrations</h1>
@@ -764,14 +802,19 @@ export function DashboardContent({ user }: DashboardContentProps) {
             </div>
           ) : selectedTable && activeIntegration ? (
             /* Table CRUD UI */
-            <DynamicUI
-              connectionId={activeIntegration.id}
-              tableName={selectedTable}
-              readonly={activeIntegration.readonly}
-            />
+            <div className="flex-1 md:min-h-0 flex flex-col overflow-y-auto md:overflow-hidden">
+              <DynamicUI
+                connectionId={activeIntegration.id}
+                tableName={selectedTable}
+                readonly={activeIntegration.readonly}
+              />
+            </div>
+          ) : selectedDashboard ? (
+            /* Dashboard View */
+            <EmbeddedDashboard dashboardId={selectedDashboard} />
           ) : (
             /* Welcome State */
-            <div className="flex items-center justify-center min-h-[60vh] px-4">
+            <div className="flex-1 flex items-center justify-center px-4">
               <div className="text-center max-w-md">
                 <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-4 text-gray-400">
                   {Icons.table}
@@ -1172,6 +1215,202 @@ function IntegrationModal({
           </form>
         </div>
       </div>
+    </div>
+  );
+}
+
+// Embedded Dashboard Component - for displaying dashboards within the workspace
+function EmbeddedDashboard({ dashboardId }: { dashboardId: string }) {
+  const [dashboard, setDashboard] = useState<DashboardFull | null>(null);
+  const [widgetData, setWidgetData] = useState<Record<string, unknown>>({});
+  const [widgetLoading, setWidgetLoading] = useState<Record<string, boolean>>({});
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchWidgetData = useCallback(async (widget: Widget) => {
+    if (!widget.config?.connectionId) return;
+
+    setWidgetLoading((prev) => ({ ...prev, [widget.id]: true }));
+
+    try {
+      const isTableWidget = widget.type === 'table';
+      const aggregation = isTableWidget ? undefined : (widget.config.aggregation || 'count');
+
+      const response = await fetch(`/api/dashboards/${dashboardId}/query`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          widgetId: widget.id,
+          connectionId: widget.config.connectionId,
+          table: widget.config.table,
+          aggregation,
+          field: isTableWidget ? undefined : widget.config.field,
+          groupBy: isTableWidget ? undefined : widget.config.groupBy,
+          datePeriod: isTableWidget ? undefined : widget.config.datePeriod,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        const data = result.type === 'table' ? result.data.items : result.data;
+        setWidgetData((prev) => ({ ...prev, [widget.id]: data }));
+      }
+    } catch (err) {
+      console.error(`Failed to fetch data for widget ${widget.id}:`, err);
+    } finally {
+      setWidgetLoading((prev) => ({ ...prev, [widget.id]: false }));
+    }
+  }, [dashboardId]);
+
+  useEffect(() => {
+    const fetchDashboard = async () => {
+      try {
+        setIsLoading(true);
+        setError(null);
+
+        const response = await fetch(`/api/dashboards/${dashboardId}`);
+
+        if (!response.ok) {
+          if (response.status === 404) {
+            throw new Error('Dashboard not found');
+          }
+          throw new Error('Failed to load dashboard');
+        }
+
+        const data = await response.json();
+        setDashboard(data);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'An error occurred');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchDashboard();
+  }, [dashboardId]);
+
+  useEffect(() => {
+    if (dashboard?.widgets) {
+      dashboard.widgets.forEach((widget) => {
+        if (widget.config?.connectionId) {
+          fetchWidgetData(widget);
+        }
+      });
+    }
+  }, [dashboard, fetchWidgetData]);
+
+  if (isLoading) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-gray-600">Loading dashboard...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex-1 flex items-center justify-center px-4">
+        <div className="text-center max-w-md">
+          <div className="w-16 h-16 bg-danger-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <svg className="w-8 h-8 text-danger-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+            </svg>
+          </div>
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">Error</h2>
+          <p className="text-gray-600">{error}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!dashboard) return null;
+
+  return (
+    <div className="flex-1 overflow-auto p-4 sm:p-6">
+      {/* Dashboard Header */}
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">{dashboard.name}</h1>
+          {dashboard.description && (
+            <p className="text-gray-600 mt-1">{dashboard.description}</p>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => {
+              dashboard.widgets.forEach((w) => {
+                if (w.config?.connectionId) fetchWidgetData(w);
+              });
+            }}
+            className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg"
+            title="Refresh data"
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+          </button>
+          <Link
+            href={`/dashboards/${dashboardId}/edit`}
+            className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+            </svg>
+            <span className="hidden sm:inline">Edit</span>
+          </Link>
+        </div>
+      </div>
+
+      {/* Widgets Grid */}
+      {dashboard.widgets.length === 0 ? (
+        <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
+          <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <svg className="w-8 h-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0l-1 3m8.5-3l1 3m0 0l.5 1.5m-.5-1.5h-9.5m0 0l-.5 1.5" />
+            </svg>
+          </div>
+          <h3 className="text-lg font-medium text-gray-900 mb-1">No widgets yet</h3>
+          <p className="text-gray-500 mb-4">Add widgets to visualize your data</p>
+          <Link
+            href={`/dashboards/${dashboardId}/edit`}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700"
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+            </svg>
+            <span>Add Widgets</span>
+          </Link>
+        </div>
+      ) : (
+        <div
+          className="grid gap-4"
+          style={{
+            gridTemplateColumns: `repeat(${dashboard.layout.columns}, 1fr)`,
+            gridAutoRows: `${dashboard.layout.rowHeight}px`,
+          }}
+        >
+          {dashboard.widgets.map((widget) => (
+            <div
+              key={widget.id}
+              className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden"
+              style={{
+                gridColumn: `${widget.x + 1} / span ${widget.width}`,
+                gridRow: `${widget.y + 1} / span ${widget.height}`,
+              }}
+            >
+              <WidgetRenderer
+                widget={widget}
+                data={widgetData[widget.id]}
+                loading={widgetLoading[widget.id]}
+              />
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

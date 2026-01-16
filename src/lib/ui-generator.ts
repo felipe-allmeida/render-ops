@@ -23,7 +23,7 @@ interface TableSchema {
  */
 function getFieldComponent(
   col: ColumnSchema
-): 'TextField' | 'NumberField' | 'DateField' | 'SelectField' {
+): 'TextField' | 'NumberField' | 'DateField' | 'SelectField' | 'JsonField' {
   switch (col.fieldType) {
     case 'number':
     case 'currency':
@@ -33,37 +33,52 @@ function getFieldComponent(
     case 'date':
     case 'datetime':
       return 'DateField';
+    case 'json':
+      return 'JsonField';
     default:
       return 'TextField';
   }
 }
 
 /**
- * Get display columns (non-PK, non-technical columns)
+ * Get display columns (non-PK, includes timestamps)
  */
 function getDisplayColumns(columns: ColumnSchema[]): ColumnSchema[] {
-  const technicalColumns = ['created_at', 'updated_at', 'deleted_at'];
+  const excludedColumns = ['deleted_at']; // Only exclude deleted_at
   return columns.filter(
     (col) =>
       !col.isPrimaryKey &&
-      !technicalColumns.includes(col.name.toLowerCase())
+      !excludedColumns.includes(col.name.toLowerCase())
   );
 }
 
 /**
- * Get searchable columns (text-based columns good for filtering)
+ * Get searchable columns (text, boolean, and date columns for filtering)
  */
 function getSearchableColumns(columns: ColumnSchema[]): ColumnSchema[] {
   const searchableTypes = ['text', 'boolean'];
-  const technicalColumns = ['created_at', 'updated_at', 'deleted_at', 'id'];
-  return columns
+  const dateTypes = ['date', 'datetime'];
+  const technicalColumns = ['deleted_at', 'id'];
+
+  const textAndBoolFilters = columns
     .filter(
       (col) =>
         !col.isPrimaryKey &&
         !technicalColumns.includes(col.name.toLowerCase()) &&
         searchableTypes.includes(col.fieldType)
     )
-    .slice(0, 3); // Limit to 3 filters to keep UI clean
+    .slice(0, 3); // Limit text/boolean to 3 filters
+
+  const dateFilters = columns
+    .filter(
+      (col) =>
+        !col.isPrimaryKey &&
+        !technicalColumns.includes(col.name.toLowerCase()) &&
+        dateTypes.includes(col.fieldType)
+    )
+    .slice(0, 2); // Limit to 2 date filters (e.g., created_at, updated_at)
+
+  return [...textAndBoolFilters, ...dateFilters];
 }
 
 /**
@@ -78,12 +93,74 @@ function getTableDisplayColumns(columns: ColumnSchema[]): ColumnSchema[] {
 }
 
 /**
- * Map column to table column definition
+ * Detect enhanced column type for rich display
+ */
+function detectEnhancedColumnType(col: ColumnSchema): {
+  cellType: string;
+  foreignTable?: string;
+} {
+  const name = col.name.toLowerCase();
+
+  // Foreign key detection (ends with _id but not just "id")
+  if (name.endsWith('_id') && name !== 'id') {
+    const foreignTable = name.slice(0, -3); // Remove "_id" suffix
+    // Convert to plural for table name (simple heuristic)
+    const tableName = foreignTable.endsWith('y')
+      ? foreignTable.slice(0, -1) + 'ies'
+      : foreignTable + 's';
+    return { cellType: 'foreignKey', foreignTable: tableName };
+  }
+
+  // Category/enum detection
+  const categoryPatterns = ['status', 'type', 'category', 'state', 'role', 'tier', 'level', 'plan', 'method'];
+  if (categoryPatterns.some(p => name.includes(p)) && col.fieldType === 'text') {
+    return { cellType: 'category' };
+  }
+
+  // Percentage detection
+  const percentPatterns = ['percent', 'rate', 'ratio', 'usage', 'progress'];
+  if (percentPatterns.some(p => name.includes(p)) && col.fieldType === 'number') {
+    return { cellType: 'percentage' };
+  }
+
+  // Currency detection (based on name patterns)
+  const currencyPatterns = ['price', 'cost', 'amount', 'total', 'subtotal', 'fee', 'salary', 'revenue', 'budget'];
+  if (currencyPatterns.some(p => name.includes(p)) && (col.fieldType === 'number' || col.fieldType === 'currency')) {
+    return { cellType: 'currency' };
+  }
+
+  // Boolean
+  if (col.fieldType === 'boolean') {
+    return { cellType: 'boolean' };
+  }
+
+  // Datetime (includes created_at, updated_at)
+  if (col.fieldType === 'datetime' || name.endsWith('_at')) {
+    return { cellType: 'datetime' };
+  }
+
+  // Date
+  if (col.fieldType === 'date') {
+    return { cellType: 'date' };
+  }
+
+  // Number
+  if (col.fieldType === 'number') {
+    return { cellType: 'number' };
+  }
+
+  return { cellType: 'text' };
+}
+
+/**
+ * Map column to table column definition with enhanced type info
  */
 function mapToTableColumn(col: ColumnSchema): {
   key: string;
   label: string;
   type: string;
+  cellType: string;
+  foreignTable?: string;
 } {
   // Convert snake_case to Title Case
   const label = col.name
@@ -91,6 +168,10 @@ function mapToTableColumn(col: ColumnSchema): {
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ');
 
+  // Get enhanced type detection
+  const { cellType, foreignTable } = detectEnhancedColumnType(col);
+
+  // Basic type for backwards compatibility
   let type: string;
   switch (col.fieldType) {
     case 'number':
@@ -110,7 +191,7 @@ function mapToTableColumn(col: ColumnSchema): {
       type = 'text';
   }
 
-  return { key: col.name, label, type };
+  return { key: col.name, label, type, cellType, foreignTable };
 }
 
 /**
@@ -193,7 +274,8 @@ export function generateCrudUI(
   const { table, columns, primaryKey } = schema;
   const pkColumn = primaryKey[0] || 'id';
   const displayColumns = getTableDisplayColumns(columns);
-  const formColumns = columns.filter((col) => !col.isPrimaryKey && !col.hasDefault);
+  // Include JSON columns even if they have defaults (they're usually editable)
+  const formColumns = columns.filter((col) => !col.isPrimaryKey && (!col.hasDefault || col.fieldType === 'json'));
 
   // Title case for table name
   const tableTitle = table
@@ -234,21 +316,42 @@ export function generateCrudUI(
                 props: {
                   searchPath: '/filters/search',
                   searchPlaceholder: `Search ${table}...`,
-                  filters: getSearchableColumns(columns).map((col) => ({
-                    key: col.name,
-                    label: col.name
+                  filters: getSearchableColumns(columns).map((col) => {
+                    const label = col.name
                       .split('_')
                       .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-                      .join(' '),
-                    type: col.fieldType === 'boolean' ? 'select' : 'text',
-                    options:
-                      col.fieldType === 'boolean'
-                        ? [
-                            { value: 'true', label: 'Yes' },
-                            { value: 'false', label: 'No' },
-                          ]
-                        : undefined,
-                  })),
+                      .join(' ');
+
+                    // Boolean filters
+                    if (col.fieldType === 'boolean') {
+                      return {
+                        key: col.name,
+                        label,
+                        type: 'select' as const,
+                        options: [
+                          { value: 'true', label: 'Yes' },
+                          { value: 'false', label: 'No' },
+                        ],
+                      };
+                    }
+
+                    // Date/datetime filters
+                    if (col.fieldType === 'date' || col.fieldType === 'datetime') {
+                      return {
+                        key: col.name,
+                        label,
+                        type: 'daterange' as const,
+                        includeTime: col.fieldType === 'datetime',
+                      };
+                    }
+
+                    // Text filters
+                    return {
+                      key: col.name,
+                      label,
+                      type: 'text' as const,
+                    };
+                  }),
                   onSearch: {
                     name: 'db_search',
                     params: {
@@ -266,6 +369,22 @@ export function generateCrudUI(
                 type: 'Row',
                 props: { gap: 'sm', justify: 'end', className: 'p-4' },
                 children: [
+                  {
+                    type: 'Button',
+                    props: {
+                      label: 'Export',
+                      variant: 'secondary',
+                      icon: 'download',
+                      action: {
+                        name: 'db_export',
+                        params: {
+                          connectionId,
+                          table,
+                          filters: { path: '/filters' },
+                        },
+                      },
+                    },
+                  },
                   {
                     type: 'Button',
                     props: {
@@ -290,7 +409,7 @@ export function generateCrudUI(
                   ...(!readonly ? [{
                     type: 'Button',
                     props: {
-                      label: `Add ${tableTitle}`,
+                      label: 'Add',
                       variant: 'primary',
                       icon: 'plus',
                       action: {
@@ -311,13 +430,14 @@ export function generateCrudUI(
                   columns: displayColumns.map(mapToTableColumn),
                   dataPath: '/data/items',
                   rowKey: pkColumn,
+                  connectionId, // Pass connectionId for FK lookups
                   loadingPath: '/ui/isLoading',
                   paginationPath: '/data/pagination',
                   enableColumnToggle: true,
                   defaultVisibleColumns: 6,
                   emptyMessage: readonly
                     ? `No ${table} found.`
-                    : `No ${table} found. Click "Add ${tableTitle}" to create one.`,
+                    : `No ${table} found. Click "Add" to create one.`,
                   onPageChange: {
                     name: 'db_list',
                     params: {

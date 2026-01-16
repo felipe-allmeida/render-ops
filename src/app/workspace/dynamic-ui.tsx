@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { DataProvider, useData } from '@/components/providers/data-provider';
 import { ActionProvider } from '@/components/providers/action-provider';
 import { Renderer, UIElement } from '@/components/renderer';
+import * as XLSX from 'xlsx';
 
 interface DynamicUIProps {
   connectionId: string;
@@ -53,7 +54,7 @@ export function DynamicUI({ connectionId, tableName, readonly = false }: Dynamic
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
+      <div className="h-full flex items-center justify-center">
         <div className="text-center">
           <svg
             className="animate-spin h-10 w-10 text-blue-600 mx-auto mb-4"
@@ -82,15 +83,17 @@ export function DynamicUI({ connectionId, tableName, readonly = false }: Dynamic
 
   if (error) {
     return (
-      <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-6">
-        <h3 className="font-semibold mb-2">Failed to generate UI</h3>
-        <p className="text-sm">{error}</p>
-        <button
-          onClick={generateUI}
-          className="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
-        >
-          Try Again
-        </button>
+      <div className="h-full flex items-center justify-center p-6">
+        <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-6 max-w-md">
+          <h3 className="font-semibold mb-2">Failed to generate UI</h3>
+          <p className="text-sm">{error}</p>
+          <button
+            onClick={generateUI}
+            className="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+          >
+            Try Again
+          </button>
+        </div>
       </div>
     );
   }
@@ -100,20 +103,22 @@ export function DynamicUI({ connectionId, tableName, readonly = false }: Dynamic
   }
 
   return (
-    <DataProvider
-      initialData={{
-        data: { items: [] },
-        form: {},
-        ui: { isLoading: true },
-        filters: {},
-      }}
-    >
-      <DynamicUIContent
-        ui={ui}
-        connectionId={connectionId}
-        tableName={tableName}
-      />
-    </DataProvider>
+    <div className="min-h-full md:h-full flex flex-col">
+      <DataProvider
+        initialData={{
+          data: { items: [] },
+          form: {},
+          ui: { isLoading: true },
+          filters: {},
+        }}
+      >
+        <DynamicUIContent
+          ui={ui}
+          connectionId={connectionId}
+          tableName={tableName}
+        />
+      </DataProvider>
+    </div>
   );
 }
 
@@ -312,6 +317,56 @@ function DynamicUIContent({
         }
       },
 
+      db_export: async (params: Record<string, unknown>) => {
+        try {
+          // Fetch all data with current filters (no pagination limit)
+          const response = await fetch('/api/actions/execute', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'db_search',
+              params: {
+                ...params,
+                connectionId,
+                table: tableName,
+                page: 1,
+                limit: 10000, // Large limit to get all filtered data
+              },
+            }),
+          });
+          const result = await response.json();
+
+          if (result.success && result.data?.items) {
+            const items = result.data.items;
+
+            if (items.length === 0) {
+              alert('No data to export');
+              return { success: false };
+            }
+
+            // Create workbook and worksheet
+            const worksheet = XLSX.utils.json_to_sheet(items);
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, tableName);
+
+            // Generate filename with timestamp
+            const timestamp = new Date().toISOString().slice(0, 10);
+            const filename = `${tableName}_${timestamp}.xlsx`;
+
+            // Download the file
+            XLSX.writeFile(workbook, filename);
+
+            return { success: true };
+          }
+
+          return { success: false };
+        } catch (error) {
+          console.error('Export failed:', error);
+          alert('Failed to export data');
+          return { success: false };
+        }
+      },
+
       http_request: async (params: Record<string, unknown>) => {
         const response = await fetch('/api/actions/execute', {
           method: 'POST',
@@ -354,8 +409,10 @@ function DynamicUIContent({
   );
 
   return (
-    <ActionProvider actions={actionHandlers()}>
-      <Renderer tree={ui} isAuthenticated={true} />
-    </ActionProvider>
+    <div className="min-h-full md:h-full flex flex-col">
+      <ActionProvider actions={actionHandlers()}>
+        <Renderer tree={ui} isAuthenticated={true} />
+      </ActionProvider>
+    </div>
   );
 }

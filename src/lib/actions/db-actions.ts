@@ -375,6 +375,35 @@ export async function dbSearch(
           continue;
         }
 
+        // Handle date range filters (column_from and column_to)
+        if (key.endsWith('_from')) {
+          const baseColumn = key.slice(0, -5); // Remove '_from' suffix
+          const colName = sanitizeColumnName(baseColumn);
+          if (typeof value === 'string' && value.trim()) {
+            conditions.push(`"${colName}" >= $${paramIndex}`);
+            queryParams.push(value.trim());
+            paramIndex++;
+          }
+          continue;
+        }
+
+        if (key.endsWith('_to')) {
+          const baseColumn = key.slice(0, -3); // Remove '_to' suffix
+          const colName = sanitizeColumnName(baseColumn);
+          if (typeof value === 'string' && value.trim()) {
+            // For date-only values, add end of day to include the whole day
+            let dateValue = value.trim();
+            // If it's a date without time (YYYY-MM-DD format), add end of day
+            if (/^\d{4}-\d{2}-\d{2}$/.test(dateValue)) {
+              dateValue = `${dateValue}T23:59:59.999`;
+            }
+            conditions.push(`"${colName}" <= $${paramIndex}`);
+            queryParams.push(dateValue);
+            paramIndex++;
+          }
+          continue;
+        }
+
         const colName = sanitizeColumnName(key);
 
         // Handle boolean string values

@@ -94,6 +94,11 @@ const Icons = {
       <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
     </svg>
   ),
+  download: (
+    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+    </svg>
+  ),
   chevronsLeft: (
     <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
@@ -116,6 +121,7 @@ const iconMap: Record<string, React.ReactNode> = {
   trash: Icons.trash,
   x: Icons.x,
   check: Icons.check,
+  download: Icons.download,
 };
 
 // ============================================================================
@@ -126,12 +132,12 @@ const iconMap: Record<string, React.ReactNode> = {
 const Page: React.FC<ElementProps> = ({ element, children }) => {
   const { title, subtitle } = element.props as { title: string; subtitle?: string };
   return (
-    <div className="min-h-screen bg-gray-50/50">
-      <header className="bg-white border-b border-gray-100 px-6 py-5">
+    <div className="h-full flex flex-col bg-gray-50/50">
+      <header className="flex-shrink-0 bg-white border-b border-gray-100 px-6 py-5">
         <h1 className="text-xl font-semibold text-gray-900">{title}</h1>
         {subtitle && <p className="text-sm text-gray-500 mt-0.5">{subtitle}</p>}
       </header>
-      <main className="p-6 max-w-7xl mx-auto">{children}</main>
+      <main className="flex-1 min-h-0 p-6 w-full flex flex-col">{children}</main>
     </div>
   );
 };
@@ -146,11 +152,11 @@ const Section: React.FC<ElementProps> = ({ element, children }) => {
   const [collapsed, setCollapsed] = React.useState(defaultCollapsed ?? false);
 
   return (
-    <section className="mb-6">
+    <section className="flex-1 min-h-0 flex flex-col">
       {title && (
         <div
           className={cn(
-            'flex items-center justify-between mb-4',
+            'flex-shrink-0 flex items-center justify-between mb-4',
             collapsible && 'cursor-pointer select-none'
           )}
           onClick={() => collapsible && setCollapsed(!collapsed)}
@@ -163,7 +169,7 @@ const Section: React.FC<ElementProps> = ({ element, children }) => {
           )}
         </div>
       )}
-      {!collapsed && children}
+      {!collapsed && <div className="flex-1 min-h-0 flex flex-col">{children}</div>}
     </section>
   );
 };
@@ -184,14 +190,14 @@ const Card: React.FC<ElementProps> = ({ element, children }) => {
   };
 
   return (
-    <div className="bg-white rounded-xl border border-gray-100 shadow-card overflow-hidden">
+    <div className="flex-1 min-h-0 flex flex-col bg-white rounded-xl border border-gray-100 shadow-card overflow-hidden">
       {(title || subtitle) && (
-        <div className="px-5 py-4 border-b border-gray-100">
+        <div className="flex-shrink-0 px-5 py-4 border-b border-gray-100">
           {title && <h3 className="font-semibold text-gray-900">{title}</h3>}
           {subtitle && <p className="text-sm text-gray-500 mt-0.5">{subtitle}</p>}
         </div>
       )}
-      <div className={paddingClasses[padding]}>{children}</div>
+      <div className={cn('flex-1 min-h-0 flex flex-col', paddingClasses[padding])}>{children}</div>
     </div>
   );
 };
@@ -229,6 +235,60 @@ const ColumnsIcon = (
 );
 
 // Table Component - Enhanced with Pagination and Column Toggle
+// Category color mapping (deterministic based on value)
+const categoryColors: Record<string, { bg: string; text: string; border: string }> = {
+  // Status colors
+  pending: { bg: 'bg-yellow-50', text: 'text-yellow-700', border: 'border-yellow-200' },
+  processing: { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200' },
+  shipped: { bg: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-200' },
+  delivered: { bg: 'bg-green-50', text: 'text-green-700', border: 'border-green-200' },
+  cancelled: { bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-200' },
+  completed: { bg: 'bg-green-50', text: 'text-green-700', border: 'border-green-200' },
+  active: { bg: 'bg-green-50', text: 'text-green-700', border: 'border-green-200' },
+  inactive: { bg: 'bg-gray-50', text: 'text-gray-600', border: 'border-gray-200' },
+  // Payment
+  paid: { bg: 'bg-green-50', text: 'text-green-700', border: 'border-green-200' },
+  failed: { bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-200' },
+  refunded: { bg: 'bg-orange-50', text: 'text-orange-700', border: 'border-orange-200' },
+  // Tiers/Plans
+  free: { bg: 'bg-gray-50', text: 'text-gray-600', border: 'border-gray-200' },
+  basic: { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200' },
+  team: { bg: 'bg-indigo-50', text: 'text-indigo-700', border: 'border-indigo-200' },
+  pro: { bg: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-200' },
+  premium: { bg: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-200' },
+  enterprise: { bg: 'bg-violet-50', text: 'text-violet-700', border: 'border-violet-200' },
+  // Methods
+  credit_card: { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200' },
+  debit_card: { bg: 'bg-cyan-50', text: 'text-cyan-700', border: 'border-cyan-200' },
+  pix: { bg: 'bg-teal-50', text: 'text-teal-700', border: 'border-teal-200' },
+  boleto: { bg: 'bg-orange-50', text: 'text-orange-700', border: 'border-orange-200' },
+  paypal: { bg: 'bg-indigo-50', text: 'text-indigo-700', border: 'border-indigo-200' },
+};
+
+// Get color for a category value
+function getCategoryColor(value: string): { bg: string; text: string; border: string } {
+  const normalized = String(value).toLowerCase().replace(/[^a-z0-9]/g, '_');
+  if (categoryColors[normalized]) {
+    return categoryColors[normalized];
+  }
+  // Generate deterministic color based on string hash
+  const colors = [
+    { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200' },
+    { bg: 'bg-green-50', text: 'text-green-700', border: 'border-green-200' },
+    { bg: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-200' },
+    { bg: 'bg-orange-50', text: 'text-orange-700', border: 'border-orange-200' },
+    { bg: 'bg-pink-50', text: 'text-pink-700', border: 'border-pink-200' },
+    { bg: 'bg-teal-50', text: 'text-teal-700', border: 'border-teal-200' },
+    { bg: 'bg-indigo-50', text: 'text-indigo-700', border: 'border-indigo-200' },
+    { bg: 'bg-cyan-50', text: 'text-cyan-700', border: 'border-cyan-200' },
+  ];
+  let hash = 0;
+  for (let i = 0; i < normalized.length; i++) {
+    hash = ((hash << 5) - hash) + normalized.charCodeAt(i);
+  }
+  return colors[Math.abs(hash) % colors.length];
+}
+
 const Table: React.FC<ElementProps> = ({ element, onAction }) => {
   const {
     columns,
@@ -236,17 +296,19 @@ const Table: React.FC<ElementProps> = ({ element, onAction }) => {
     rowKey,
     emptyMessage,
     rowActions,
+    connectionId,
     loadingPath,
     paginationPath,
     onPageChange,
     enableColumnToggle = false,
     defaultVisibleColumns = 6,
   } = element.props as {
-    columns: Array<{ key: string; label: string; type?: string; width?: string }>;
+    columns: Array<{ key: string; label: string; type?: string; cellType?: string; foreignTable?: string; width?: string }>;
     dataPath: string;
     rowKey: string;
     emptyMessage?: string;
     rowActions?: Array<{ name: string; params?: Record<string, unknown>; confirm?: unknown }>;
+    connectionId?: string;
     loadingPath?: string;
     paginationPath?: string;
     onPageChange?: Record<string, unknown>;
@@ -271,6 +333,12 @@ const Table: React.FC<ElementProps> = ({ element, onAction }) => {
     return initialVisible;
   });
   const [showColumnMenu, setShowColumnMenu] = React.useState(false);
+
+  // FK modal state
+  const [fkModal, setFkModal] = React.useState<{ open: boolean; table: string; id: unknown } | null>(null);
+
+  // JSON viewer modal state
+  const [jsonModal, setJsonModal] = React.useState<{ open: boolean; title: string; data: unknown } | null>(null);
 
   // Filtered columns based on visibility
   const visibleColumns = enableColumnToggle
@@ -301,6 +369,145 @@ const Table: React.FC<ElementProps> = ({ element, onAction }) => {
     setVisibleColumnKeys(new Set([columns[0]?.key].filter(Boolean)));
   };
 
+  // Render cell based on cellType
+  const renderCell = (value: unknown, col: { key: string; label?: string; type?: string; cellType?: string; foreignTable?: string }): React.ReactNode => {
+    if (value === null || value === undefined) {
+      return <span className="text-gray-400">—</span>;
+    }
+
+    const cellType = col.cellType || col.type || 'text';
+
+    switch (cellType) {
+      case 'boolean':
+        return (
+          <span className={cn(
+            'inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium',
+            value ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
+          )}>
+            {value ? (
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            ) : (
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            )}
+            {value ? 'Yes' : 'No'}
+          </span>
+        );
+
+      case 'currency':
+        return (
+          <span className="font-medium tabular-nums">
+            {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(value))}
+          </span>
+        );
+
+      case 'percentage':
+        return (
+          <span className="font-medium tabular-nums">
+            {typeof value === 'number' ? `${value.toFixed(2)}%` : `${value}%`}
+          </span>
+        );
+
+      case 'datetime':
+        try {
+          const date = new Date(value as string);
+          return (
+            <span className="text-gray-600 tabular-nums">
+              {date.toLocaleDateString('pt-BR')} {date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+            </span>
+          );
+        } catch {
+          return String(value);
+        }
+
+      case 'date':
+        try {
+          return (
+            <span className="text-gray-600 tabular-nums">
+              {new Date(value as string).toLocaleDateString('pt-BR')}
+            </span>
+          );
+        } catch {
+          return String(value);
+        }
+
+      case 'category':
+        const catColors = getCategoryColor(String(value));
+        return (
+          <span className={cn(
+            'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border',
+            catColors.bg, catColors.text, catColors.border
+          )}>
+            {String(value).replace(/_/g, ' ')}
+          </span>
+        );
+
+      case 'foreignKey':
+        if (!value) return <span className="text-gray-400">—</span>;
+        return (
+          <button
+            onClick={() => col.foreignTable && setFkModal({ open: true, table: col.foreignTable, id: value })}
+            className="inline-flex items-center gap-1 text-primary-600 hover:text-primary-700 hover:underline font-medium"
+          >
+            #{String(value)}
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+            </svg>
+          </button>
+        );
+
+      case 'number':
+        return (
+          <span className="tabular-nums">
+            {new Intl.NumberFormat('pt-BR').format(Number(value))}
+          </span>
+        );
+
+      case 'json':
+        if (typeof value === 'object' && value !== null) {
+          const keys = Object.keys(value);
+          const isArray = Array.isArray(value);
+          const count = isArray ? value.length : keys.length;
+          return (
+            <button
+              onClick={() => setJsonModal({ open: true, title: col.label || col.key, data: value })}
+              className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-gray-100 text-gray-700 text-xs font-mono hover:bg-gray-200 transition-colors cursor-pointer"
+            >
+              <svg className="w-3.5 h-3.5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
+              </svg>
+              {isArray ? `[${count} items]` : `{${count} keys}`}
+            </button>
+          );
+        }
+        return String(value);
+
+      default:
+        // Handle objects that weren't explicitly typed as 'json'
+        if (typeof value === 'object' && value !== null) {
+          const keys = Object.keys(value);
+          const isArray = Array.isArray(value);
+          const count = isArray ? value.length : keys.length;
+          return (
+            <button
+              onClick={() => setJsonModal({ open: true, title: col.label || col.key, data: value })}
+              className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-gray-100 text-gray-700 text-xs font-mono hover:bg-gray-200 transition-colors cursor-pointer"
+            >
+              <svg className="w-3.5 h-3.5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
+              </svg>
+              {isArray ? `[${count} items]` : `{${count} keys}`}
+            </button>
+          );
+        }
+        return String(value);
+    }
+  };
+
+  // Legacy formatValue for backwards compatibility
   const formatValue = (value: unknown, type?: string): string => {
     if (value === null || value === undefined) return '—';
     if (type === 'boolean') return value ? 'Yes' : 'No';
@@ -352,83 +559,106 @@ const Table: React.FC<ElementProps> = ({ element, onAction }) => {
     </div>
   );
 
-  // Column settings drawer (slide-out panel)
-  const ColumnDrawer = enableColumnToggle && showColumnMenu && (
-    <div className="fixed inset-0 z-50">
+  // Column settings modal (centered modal style)
+  const [columnSearch, setColumnSearch] = React.useState('');
+  const filteredColumns = React.useMemo(() => {
+    if (!columnSearch.trim()) return columns;
+    return columns.filter(col =>
+      col.label.toLowerCase().includes(columnSearch.toLowerCase())
+    );
+  }, [columns, columnSearch]);
+
+  const ColumnModal = enableColumnToggle && showColumnMenu && (
+    <div className="fixed inset-0 z-50 flex flex-col justify-end md:justify-center md:items-center md:p-4">
       {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-gray-900/30 backdrop-blur-sm animate-fade-in"
-        onClick={() => setShowColumnMenu(false)}
+        className="absolute inset-0 bg-black/50"
+        onClick={() => {
+          setShowColumnMenu(false);
+          setColumnSearch('');
+        }}
       />
 
-      {/* Drawer panel */}
-      <div className="absolute right-0 top-0 bottom-0 w-full max-w-sm bg-white shadow-modal flex flex-col animate-slide-in-right">
+      {/* Bottom Sheet (mobile) / Modal (desktop) */}
+      <div className="relative bg-white rounded-t-2xl md:rounded-2xl shadow-xl w-full md:max-w-md max-h-[85vh] flex flex-col animate-slide-up md:animate-none md:modal-enter overflow-hidden">
+        {/* Handle bar - mobile only */}
+        <div className="flex justify-center pt-3 pb-1 md:hidden">
+          <div className="w-10 h-1 bg-gray-300 rounded-full" />
+        </div>
+
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-4 border-b border-gray-100">
-          <div>
-            <h3 className="text-lg font-semibold text-gray-900">Table Columns</h3>
-            <p className="text-sm text-gray-500 mt-0.5">
-              {visibleColumns.length} of {columns.length} selected
-            </p>
-          </div>
+        <div className="flex items-center justify-between px-5 py-3 md:py-4 md:border-b md:border-gray-100">
+          <h3 className="text-lg font-semibold text-gray-900">Colunas da Tabela</h3>
           <button
-            onClick={() => setShowColumnMenu(false)}
-            className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+            onClick={() => {
+              setShowColumnMenu(false);
+              setColumnSearch('');
+            }}
+            className="p-2 -mr-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors"
           >
             {Icons.x}
           </button>
         </div>
 
-        {/* Quick actions */}
-        <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100 bg-gray-50/50">
-          <button
-            onClick={showAllColumns}
-            className="flex-1 py-2 text-sm font-medium text-primary-600 bg-primary-50 hover:bg-primary-100 rounded-lg transition-colors"
-          >
-            Show all
-          </button>
-          <button
-            onClick={hideAllColumns}
-            className="flex-1 py-2 text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
-          >
-            Hide all
-          </button>
+        {/* Search */}
+        <div className="px-5 py-3">
+          <div className="relative">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
+              {Icons.search}
+            </div>
+            <input
+              type="text"
+              value={columnSearch}
+              onChange={(e) => setColumnSearch(e.target.value)}
+              placeholder="Buscar coluna..."
+              className="w-full pl-10 pr-4 py-3 text-sm rounded-xl border border-gray-200 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 focus:bg-white transition-all"
+            />
+          </div>
+        </div>
+
+        {/* Subtitle */}
+        <div className="px-5 py-2">
+          <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
+            {visibleColumns.length} de {columns.length} colunas selecionadas
+          </p>
         </div>
 
         {/* Column list */}
-        <div className="flex-1 overflow-y-auto py-2">
-          {columns.map((col, index) => (
-            <label
-              key={col.key}
-              className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 cursor-pointer transition-colors"
-            >
-              <input
-                type="checkbox"
-                checked={visibleColumnKeys.has(col.key)}
-                onChange={() => toggleColumn(col.key)}
-                className="w-5 h-5 rounded border-gray-300 text-primary-600 focus:ring-primary-500 focus:ring-offset-0"
-              />
-              <div className="flex-1 min-w-0">
-                <span className="text-sm font-medium text-gray-900">{col.label}</span>
-                <span className="text-xs text-gray-400 ml-2">#{index + 1}</span>
-              </div>
-              {visibleColumnKeys.has(col.key) && (
-                <span className="text-xs font-medium text-primary-600 bg-primary-50 px-2 py-0.5 rounded">
-                  visible
-                </span>
-              )}
-            </label>
-          ))}
-        </div>
-
-        {/* Footer */}
-        <div className="px-4 py-4 border-t border-gray-100 bg-gray-50/50">
-          <button
-            onClick={() => setShowColumnMenu(false)}
-            className="w-full py-2.5 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors"
-          >
-            Done
-          </button>
+        <div className="flex-1 overflow-y-auto">
+          {filteredColumns.length === 0 ? (
+            <div className="px-5 py-8 text-center text-gray-500 text-sm">
+              Nenhuma coluna encontrada
+            </div>
+          ) : (
+            filteredColumns.map((col) => (
+              <label
+                key={col.key}
+                className="flex items-center gap-3 px-5 py-3.5 hover:bg-gray-50 active:bg-gray-100 cursor-pointer transition-colors"
+              >
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${
+                  visibleColumnKeys.has(col.key)
+                    ? 'bg-primary-100 text-primary-600'
+                    : 'bg-gray-100 text-gray-400'
+                }`}>
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-900">{col.label}</p>
+                  <p className="text-xs text-gray-500">
+                    {visibleColumnKeys.has(col.key) ? 'Coluna visível' : 'Coluna oculta'}
+                  </p>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={visibleColumnKeys.has(col.key)}
+                  onChange={() => toggleColumn(col.key)}
+                  className="w-5 h-5 rounded border-gray-300 text-primary-600 focus:ring-primary-500 focus:ring-offset-0"
+                />
+              </label>
+            ))
+          )}
         </div>
       </div>
     </div>
@@ -437,40 +667,65 @@ const Table: React.FC<ElementProps> = ({ element, onAction }) => {
   // Loading skeleton
   if (isLoading) {
     return (
-      <div className="overflow-hidden">
-        {ColumnToggleHeader}
-        <div className="overflow-auto max-h-[calc(100vh-320px)]">
-          <table className="w-full">
-            <thead className="sticky top-0 z-10">
-              <tr className="border-b border-gray-100 bg-gray-50">
-                {visibleColumns.map((col) => (
-                  <th key={col.key} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    {col.label}
-                  </th>
-                ))}
-                {rowActions && <th className="px-4 py-3 w-24"></th>}
-              </tr>
-            </thead>
-            <tbody>
-              {[1, 2, 3, 4, 5].map((i) => (
-                <tr key={i} className="border-b border-gray-50">
+      <div className="flex flex-col md:flex-1 md:min-h-0 md:overflow-hidden">
+        {/* Desktop skeleton */}
+        <div className="hidden md:block">
+          {ColumnToggleHeader}
+          <div className="flex-1 min-h-0 overflow-auto">
+            <table className="w-full">
+              <thead className="sticky top-0 z-10">
+                <tr className="border-b border-gray-100 bg-gray-50">
                   {visibleColumns.map((col) => (
-                    <td key={col.key} className="px-4 py-4">
-                      <div className="h-4 skeleton rounded w-3/4" />
-                    </td>
+                    <th key={col.key} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      {col.label}
+                    </th>
                   ))}
-                  {rowActions && (
-                    <td className="px-4 py-4">
-                      <div className="flex justify-end gap-2">
-                        <div className="h-8 w-8 skeleton rounded-lg" />
-                        <div className="h-8 w-8 skeleton rounded-lg" />
-                      </div>
-                    </td>
-                  )}
+                  {rowActions && <th className="px-4 py-3 w-24"></th>}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {[1, 2, 3, 4, 5].map((i) => (
+                  <tr key={i} className="border-b border-gray-50">
+                    {visibleColumns.map((col) => (
+                      <td key={col.key} className="px-4 py-4">
+                        <div className="h-4 skeleton rounded w-3/4" />
+                      </td>
+                    ))}
+                    {rowActions && (
+                      <td className="px-4 py-4">
+                        <div className="flex justify-end gap-2">
+                          <div className="h-8 w-8 skeleton rounded-lg" />
+                          <div className="h-8 w-8 skeleton rounded-lg" />
+                        </div>
+                      </td>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Mobile skeleton */}
+        <div className="md:hidden divide-y divide-gray-100">
+          {[1, 2, 3, 4, 5].map((i) => (
+            <div key={i} className="px-4 py-4">
+              <div className="flex items-start justify-between gap-3 mb-3">
+                <div className="flex-1">
+                  <div className="h-5 skeleton rounded w-2/3 mb-2" />
+                  <div className="h-4 skeleton rounded w-1/2" />
+                </div>
+                <div className="flex gap-1">
+                  <div className="h-9 w-9 skeleton rounded-lg" />
+                  <div className="h-9 w-9 skeleton rounded-lg" />
+                </div>
+              </div>
+              <div className="flex gap-4">
+                <div className="h-4 skeleton rounded w-24" />
+                <div className="h-4 skeleton rounded w-20" />
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     );
@@ -492,13 +747,17 @@ const Table: React.FC<ElementProps> = ({ element, onAction }) => {
   }
 
   return (
-    <div className="overflow-hidden">
-      {/* Column toggle header */}
-      {ColumnToggleHeader}
+    <div className="flex flex-col md:flex-1 md:min-h-0 md:overflow-hidden">
+      {/* Column toggle header - Desktop only */}
+      <div className="hidden md:block">
+        {ColumnToggleHeader}
+      </div>
 
-      {/* Desktop table */}
-      <div className="hidden md:block overflow-auto max-h-[calc(100vh-320px)]">
-        <table className="w-full">
+      {/* Desktop: Scrollable table area | Mobile: Natural flow */}
+      <div className="md:flex-1 md:min-h-0 md:overflow-auto">
+        {/* Desktop table */}
+        <div className="hidden md:block">
+          <table className="w-full">
           <thead className="sticky top-0 z-10">
             <tr className="border-b border-gray-100 bg-gray-50">
               {visibleColumns.map((col) => (
@@ -522,7 +781,7 @@ const Table: React.FC<ElementProps> = ({ element, onAction }) => {
               <tr key={String(row[rowKey]) || idx} className="table-row-hover">
                 {visibleColumns.map((col) => (
                   <td key={col.key} className="px-4 py-3.5 text-sm text-gray-700 whitespace-nowrap">
-                    {formatValue(row[col.key], col.type)}
+                    {renderCell(row[col.key], col)}
                   </td>
                 ))}
                 {rowActions && rowActions.length > 0 && (
@@ -554,53 +813,150 @@ const Table: React.FC<ElementProps> = ({ element, onAction }) => {
               </tr>
             ))}
           </tbody>
-        </table>
-      </div>
+          </table>
+        </div>
 
-      {/* Mobile card view */}
-      <div className="md:hidden divide-y divide-gray-100 overflow-auto max-h-[calc(100vh-320px)]">
-        {data.map((row, idx) => (
-          <div key={String(row[rowKey]) || idx} className="p-4">
-            <div className="space-y-2">
-              {visibleColumns.slice(0, 4).map((col) => (
-                <div key={col.key} className="flex justify-between items-center">
-                  <span className="text-xs text-gray-500 uppercase">{col.label}</span>
-                  <span className="text-sm font-medium text-gray-900">
-                    {formatValue(row[col.key], col.type)}
-                  </span>
-                </div>
-              ))}
+        {/* Mobile card view - Natural flow */}
+        <div className="md:hidden">
+          {/* Mobile column toggle */}
+          {enableColumnToggle && columns.length > 0 && (
+            <div className="flex items-center justify-between px-4 py-3 bg-gray-50/80 border-b border-gray-100">
+              <span className="text-sm text-gray-500">
+                {visibleColumns.length} de {columns.length} colunas
+              </span>
+              <button
+                onClick={() => setShowColumnMenu(true)}
+                className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-200 bg-white text-gray-600 active:bg-gray-50"
+              >
+                {ColumnsIcon}
+                <span>Colunas</span>
+              </button>
             </div>
-            {rowActions && rowActions.length > 0 && (
-              <div className="flex gap-2 mt-4 pt-4 border-t border-gray-100">
-                {rowActions.map((action, actionIdx) => (
-                  <button
-                    key={actionIdx}
-                    className={cn(
-                      'flex-1 py-2 px-3 text-sm font-medium rounded-lg flex items-center justify-center gap-2',
-                      action.name === 'db_get' && 'bg-primary-50 text-primary-700 hover:bg-primary-100',
-                      action.name === 'db_delete' && 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+          )}
+
+          {/* Cards list */}
+          <div className="divide-y divide-gray-100">
+            {data.map((row, idx) => {
+              // Use all visible columns selected by user
+              const primaryCol = visibleColumns[0];
+              const otherCols = visibleColumns.slice(1);
+
+              return (
+                <div key={String(row[rowKey]) || idx} className="bg-white active:bg-gray-50">
+                  <div className="px-4 py-4">
+                    {/* Header with primary column and actions */}
+                    <div className="flex items-start justify-between gap-3 mb-3">
+                      <div className="flex-1 min-w-0">
+                        {primaryCol && (
+                          <>
+                            <p className="text-xs text-gray-400 uppercase tracking-wide mb-0.5">
+                              {primaryCol.label}
+                            </p>
+                            <p className="text-base font-semibold text-gray-900">
+                              {renderCell(row[primaryCol.key], primaryCol)}
+                            </p>
+                          </>
+                        )}
+                      </div>
+                      {/* Quick actions */}
+                      {rowActions && rowActions.length > 0 && (
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          {rowActions.map((action, actionIdx) => (
+                            <button
+                              key={actionIdx}
+                              className={cn(
+                                'p-2 rounded-lg transition-colors',
+                                action.name === 'db_get' && 'text-primary-600 hover:bg-primary-50 active:bg-primary-100',
+                                action.name === 'db_delete' && 'text-gray-400 hover:bg-gray-100 active:bg-gray-200'
+                              )}
+                              onClick={() =>
+                                onAction({
+                                  ...action,
+                                  params: { ...action.params, id: row[rowKey], row },
+                                })
+                              }
+                            >
+                              {action.name === 'db_get' && Icons.edit}
+                              {action.name === 'db_delete' && Icons.trash}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* All other visible columns */}
+                    {otherCols.length > 0 && (
+                      <div className="space-y-2">
+                        {otherCols.map((col) => (
+                          <div key={col.key} className="flex justify-between items-start gap-2">
+                            <span className="text-xs text-gray-400 uppercase tracking-wide flex-shrink-0">
+                              {col.label}
+                            </span>
+                            <span className="text-sm text-gray-900 text-right">
+                              {renderCell(row[col.key], col)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
                     )}
-                    onClick={() =>
-                      onAction({
-                        ...action,
-                        params: { ...action.params, id: row[rowKey], row },
-                      })
-                    }
-                  >
-                    {action.name === 'db_get' && <>{Icons.edit}<span>Edit</span></>}
-                    {action.name === 'db_delete' && <>{Icons.trash}<span>Delete</span></>}
-                  </button>
-                ))}
-              </div>
-            )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
-        ))}
+
+          {/* Mobile Pagination - Inline with cards */}
+          {pagination && totalPages > 1 && (
+            <div className="px-4 py-6 bg-gray-50/50">
+              <div className="flex items-center justify-between gap-4">
+                {/* Previous */}
+                <button
+                  onClick={() => handlePageChange(currentPage - 1)}
+                  disabled={currentPage === 1}
+                  className={cn(
+                    'flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-xl transition-colors',
+                    currentPage === 1
+                      ? 'text-gray-300 bg-gray-100 cursor-not-allowed'
+                      : 'text-gray-700 bg-white border border-gray-200 active:bg-gray-50'
+                  )}
+                >
+                  {Icons.chevronLeft}
+                  <span>Anterior</span>
+                </button>
+
+                {/* Page info */}
+                <div className="text-center">
+                  <p className="text-sm font-medium text-gray-900">
+                    {currentPage} de {totalPages}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {total} registros
+                  </p>
+                </div>
+
+                {/* Next */}
+                <button
+                  onClick={() => handlePageChange(currentPage + 1)}
+                  disabled={currentPage === totalPages}
+                  className={cn(
+                    'flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-xl transition-colors',
+                    currentPage === totalPages
+                      ? 'text-gray-300 bg-gray-100 cursor-not-allowed'
+                      : 'text-white bg-primary-600 active:bg-primary-700'
+                  )}
+                >
+                  <span>Próximo</span>
+                  {Icons.chevronRight}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Pagination Controls */}
+      {/* Desktop Pagination Controls */}
       {pagination && totalPages > 1 && (
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-4 py-3 border-t border-gray-100 bg-gray-50/50">
+        <div className="hidden md:flex flex-shrink-0 flex-col sm:flex-row items-center justify-between gap-4 px-4 py-3 border-t border-gray-100 bg-white">
           {/* Info */}
           <div className="text-sm text-gray-500 order-2 sm:order-1">
             Showing <span className="font-medium text-gray-700">{startRecord}</span> to{' '}
@@ -703,13 +1059,270 @@ const Table: React.FC<ElementProps> = ({ element, onAction }) => {
         </div>
       )}
 
-      {/* Column settings drawer */}
-      {ColumnDrawer}
+      {/* Column settings modal */}
+      {ColumnModal}
+
+      {/* Foreign Key Modal */}
+      {fkModal?.open && connectionId && (
+        <ForeignKeyModal
+          connectionId={connectionId}
+          table={fkModal.table}
+          id={fkModal.id}
+          onClose={() => setFkModal(null)}
+        />
+      )}
+
+      {/* JSON Viewer Modal */}
+      {jsonModal?.open && (
+        <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/50 animate-fade-in"
+            onClick={() => setJsonModal(null)}
+          />
+          {/* Modal */}
+          <div className="relative bg-white w-full md:max-w-2xl md:mx-4 rounded-t-2xl md:rounded-2xl shadow-xl animate-slide-up md:animate-fade-in max-h-[85vh] flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+              <div className="flex items-center gap-2">
+                <svg className="w-5 h-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
+                </svg>
+                <h3 className="font-semibold text-gray-900">{jsonModal.title}</h3>
+              </div>
+              <button
+                onClick={() => setJsonModal(null)}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <svg className="w-5 h-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            {/* Content */}
+            <div className="flex-1 overflow-auto p-4">
+              <pre className="text-sm font-mono bg-gray-50 rounded-lg p-4 overflow-x-auto whitespace-pre-wrap break-words text-gray-800">
+                {JSON.stringify(jsonModal.data, null, 2)}
+              </pre>
+            </div>
+            {/* Footer */}
+            <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-gray-100">
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(JSON.stringify(jsonModal.data, null, 2));
+                }}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors flex items-center gap-2"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
+                Copiar
+              </button>
+              <button
+                onClick={() => setJsonModal(null)}
+                className="px-4 py-2 text-sm font-medium text-white bg-primary-600 rounded-lg hover:bg-primary-700 transition-colors"
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
-// SearchFilter Component - Enhanced
+// Foreign Key Modal Component
+const ForeignKeyModal: React.FC<{
+  connectionId: string;
+  table: string;
+  id: unknown;
+  onClose: () => void;
+}> = ({ connectionId, table, id, onClose }) => {
+  const [data, setData] = React.useState<Record<string, unknown> | null>(null);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        const response = await fetch('/api/actions/execute', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'db_get',
+            params: { connectionId, table, id },
+          }),
+        });
+        const result = await response.json();
+        if (result.success && result.data) {
+          setData(result.data);
+        } else {
+          setError(result.error || 'Record not found');
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to fetch');
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, [connectionId, table, id]);
+
+  // Format table name for display
+  const displayName = table
+    .split('_')
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
+
+  return (
+    <div className="fixed inset-0 z-50 overflow-y-auto">
+      {/* Backdrop */}
+      <div
+        className="fixed inset-0 bg-gray-900/50 backdrop-blur-sm"
+        onClick={onClose}
+      />
+
+      {/* Modal - Full screen on mobile */}
+      <div className="flex min-h-full items-center justify-center p-0 sm:p-4">
+        <div className="relative w-full h-full sm:h-auto sm:max-h-[90vh] sm:max-w-lg bg-white sm:rounded-xl shadow-modal overflow-hidden flex flex-col">
+          {/* Header */}
+          <div className="flex-shrink-0 flex items-center justify-between px-4 sm:px-6 py-4 border-b border-gray-100">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900">{displayName}</h3>
+              <p className="text-sm text-gray-500">Record #{String(id)}</p>
+            </div>
+            <button
+              onClick={onClose}
+              className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg"
+            >
+              {Icons.x}
+            </button>
+          </div>
+
+          {/* Content */}
+          <div className="flex-1 overflow-y-auto p-4 sm:p-6">
+            {loading ? (
+              <div className="space-y-3">
+                {[1, 2, 3, 4, 5].map(i => (
+                  <div key={i} className="flex justify-between">
+                    <div className="h-4 w-24 skeleton rounded" />
+                    <div className="h-4 w-40 skeleton rounded" />
+                  </div>
+                ))}
+              </div>
+            ) : error ? (
+              <div className="text-center py-8">
+                <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-3 text-red-500">
+                  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </div>
+                <p className="text-gray-600">{error}</p>
+              </div>
+            ) : data ? (
+              <dl className="space-y-3">
+                {Object.entries(data).map(([key, value]) => (
+                  <div key={key} className="flex flex-col sm:flex-row sm:justify-between gap-1 py-2 border-b border-gray-50 last:border-0">
+                    <dt className="text-sm font-medium text-gray-500">
+                      {key.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+                    </dt>
+                    <dd className="text-sm text-gray-900 sm:text-right break-all">
+                      {value === null || value === undefined ? (
+                        <span className="text-gray-400">—</span>
+                      ) : typeof value === 'boolean' ? (
+                        <span className={cn(
+                          'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium',
+                          value ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
+                        )}>
+                          {value ? 'Yes' : 'No'}
+                        </span>
+                      ) : typeof value === 'object' ? (
+                        <code className="text-xs bg-gray-100 px-2 py-1 rounded">
+                          {JSON.stringify(value)}
+                        </code>
+                      ) : (
+                        String(value)
+                      )}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            ) : null}
+          </div>
+
+          {/* Footer */}
+          <div className="flex-shrink-0 px-4 sm:px-6 py-4 border-t border-gray-100 bg-gray-50">
+            <button
+              onClick={onClose}
+              className="w-full py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Date preset utilities
+const DATE_PRESETS = [
+  { value: '', label: 'Qualquer data' },
+  { value: 'today', label: 'Hoje' },
+  { value: 'yesterday', label: 'Ontem' },
+  { value: 'last7days', label: 'Últimos 7 dias' },
+  { value: 'last30days', label: 'Últimos 30 dias' },
+  { value: 'thisMonth', label: 'Este mês' },
+  { value: 'lastMonth', label: 'Mês passado' },
+  { value: 'thisYear', label: 'Este ano' },
+  { value: 'custom', label: 'Período personalizado' },
+] as const;
+
+function getDateRangeFromPreset(preset: string): { from?: string; to?: string } {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+  const formatDate = (d: Date) => d.toISOString().split('T')[0];
+
+  switch (preset) {
+    case 'today':
+      return { from: formatDate(today), to: formatDate(today) };
+    case 'yesterday': {
+      const yesterday = new Date(today);
+      yesterday.setDate(yesterday.getDate() - 1);
+      return { from: formatDate(yesterday), to: formatDate(yesterday) };
+    }
+    case 'last7days': {
+      const last7 = new Date(today);
+      last7.setDate(last7.getDate() - 6);
+      return { from: formatDate(last7), to: formatDate(today) };
+    }
+    case 'last30days': {
+      const last30 = new Date(today);
+      last30.setDate(last30.getDate() - 29);
+      return { from: formatDate(last30), to: formatDate(today) };
+    }
+    case 'thisMonth': {
+      const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+      return { from: formatDate(firstDay), to: formatDate(today) };
+    }
+    case 'lastMonth': {
+      const firstDayLastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+      const lastDayLastMonth = new Date(today.getFullYear(), today.getMonth(), 0);
+      return { from: formatDate(firstDayLastMonth), to: formatDate(lastDayLastMonth) };
+    }
+    case 'thisYear': {
+      const firstDayYear = new Date(today.getFullYear(), 0, 1);
+      return { from: formatDate(firstDayYear), to: formatDate(today) };
+    }
+    default:
+      return {};
+  }
+}
+
+// SearchFilter Component - Enhanced with Date Presets
 const SearchFilter: React.FC<ElementProps> = ({ element, onAction }) => {
   const {
     searchPath,
@@ -722,8 +1335,9 @@ const SearchFilter: React.FC<ElementProps> = ({ element, onAction }) => {
     filters?: Array<{
       key: string;
       label: string;
-      type: 'text' | 'select' | 'date';
+      type: 'text' | 'select' | 'date' | 'daterange';
       options?: Array<{ value: string; label: string }>;
+      includeTime?: boolean;
     }>;
     onSearch: Record<string, unknown>;
   };
@@ -732,65 +1346,225 @@ const SearchFilter: React.FC<ElementProps> = ({ element, onAction }) => {
   const setData = useSetData();
   const [localSearch, setLocalSearch] = React.useState(String(searchValue));
   const [showFilters, setShowFilters] = React.useState(false);
-  const [activeFilterCount, setActiveFilterCount] = React.useState(0);
-  const filterValuesRef = React.useRef<Record<string, string>>({});
 
-  // Calculate active filter count
-  React.useEffect(() => {
-    let count = localSearch ? 1 : 0;
-    count += Object.values(filterValuesRef.current).filter(v => v && v.trim()).length;
-    setActiveFilterCount(count);
-  }, [localSearch]);
+  // Use state instead of ref for filter values (to trigger re-renders)
+  const [filterValues, setFilterValues] = React.useState<Record<string, string>>({});
+  const [appliedFilterValues, setAppliedFilterValues] = React.useState<Record<string, string>>({});
+
+  const [dateFilters, setDateFilters] = React.useState<Record<string, { from?: string; to?: string }>>({});
+  const [appliedDateFilters, setAppliedDateFilters] = React.useState<Record<string, { from?: string; to?: string }>>({});
+
+  const [datePresets, setDatePresets] = React.useState<Record<string, string>>({});
+  const [customDateModal, setCustomDateModal] = React.useState<{ key: string; includeTime: boolean } | null>(null);
+  const [tempDateRange, setTempDateRange] = React.useState<{ from: string; to: string }>({ from: '', to: '' });
 
   // Execute search with current values
-  const executeSearch = React.useCallback((searchTerm: string, filterValues: Record<string, string>) => {
+  const executeSearch = React.useCallback((
+    searchTerm: string,
+    filterVals: Record<string, string>,
+    dateFilterVals: Record<string, { from?: string; to?: string }>
+  ) => {
     if (onSearch) {
-      // Build the action with current values directly injected
+      // Build combined filters with date ranges
+      const combinedFilters: Record<string, unknown> = { ...filterVals, search: searchTerm };
+
+      // Add date filters in a format the backend understands
+      Object.entries(dateFilterVals).forEach(([key, value]) => {
+        if (value.from) {
+          combinedFilters[`${key}_from`] = value.from;
+        }
+        if (value.to) {
+          combinedFilters[`${key}_to`] = value.to;
+        }
+      });
+
       const actionWithValues = {
         ...onSearch,
         params: {
           ...(onSearch.params as Record<string, unknown>),
           search: searchTerm,
-          filters: { ...filterValues, search: searchTerm },
+          filters: combinedFilters,
         },
       };
       onAction(actionWithValues);
     }
   }, [onSearch, onAction]);
 
-  // Debounced search
+  // Debounced search for the main search input only
   React.useEffect(() => {
     const timer = setTimeout(() => {
       if (localSearch !== searchValue) {
         setData(searchPath, localSearch);
-        executeSearch(localSearch, filterValuesRef.current);
+        executeSearch(localSearch, appliedFilterValues, appliedDateFilters);
       }
     }, 400);
     return () => clearTimeout(timer);
-  }, [localSearch, searchValue, searchPath, setData, executeSearch]);
+  }, [localSearch, searchValue, searchPath, setData, executeSearch, appliedFilterValues, appliedDateFilters]);
 
+  // Handle filter value change (just update local state, don't execute search)
   const handleFilterChange = (key: string, value: string) => {
-    filterValuesRef.current[key] = value;
-    setData(`/filters/${key}`, value || null);
-    executeSearch(localSearch, filterValuesRef.current);
+    setFilterValues(prev => ({ ...prev, [key]: value }));
   };
 
+  // Handle date preset change (just update local state, don't execute search)
+  const handleDatePresetChange = (key: string, preset: string, includeTime: boolean = false) => {
+    setDatePresets(prev => ({ ...prev, [key]: preset }));
+
+    if (preset === 'custom') {
+      // Open modal for custom date selection
+      const existing = dateFilters[key] || { from: '', to: '' };
+      setTempDateRange({ from: existing.from || '', to: existing.to || '' });
+      setCustomDateModal({ key, includeTime });
+      return;
+    }
+
+    const dateRange = getDateRangeFromPreset(preset);
+    setDateFilters(prev => ({ ...prev, [key]: dateRange }));
+  };
+
+  const handleApplyCustomDate = () => {
+    if (!customDateModal) return;
+    const { key } = customDateModal;
+    setDateFilters(prev => ({ ...prev, [key]: { from: tempDateRange.from, to: tempDateRange.to } }));
+    setCustomDateModal(null);
+  };
+
+  const handleCancelCustomDate = () => {
+    if (!customDateModal) return;
+    const { key } = customDateModal;
+    const existing = dateFilters[key];
+    if (!existing?.from && !existing?.to) {
+      setDatePresets(prev => ({ ...prev, [key]: '' }));
+    }
+    setCustomDateModal(null);
+  };
+
+  // Apply filters - called when clicking "Aplicar filtros"
+  const handleApplyFilters = () => {
+    // Save applied values
+    setAppliedFilterValues({ ...filterValues });
+    setAppliedDateFilters({ ...dateFilters });
+
+    // Update data store
+    filters.forEach((f) => {
+      setData(`/filters/${f.key}`, filterValues[f.key] || null);
+    });
+
+    // Execute search with new filters
+    executeSearch(localSearch, filterValues, dateFilters);
+    setShowFilters(false);
+  };
+
+  // Clear all filters
   const handleClear = () => {
     setLocalSearch('');
     setData(searchPath, '');
+    setFilterValues({});
+    setAppliedFilterValues({});
+    setDateFilters({});
+    setAppliedDateFilters({});
+    setDatePresets({});
     filters.forEach((f) => {
       setData(`/filters/${f.key}`, null);
-      filterValuesRef.current[f.key] = '';
     });
-    filterValuesRef.current = {};
-    executeSearch('', {});
+    executeSearch('', {}, {});
+    setShowFilters(false);
+  };
+
+  // Count of currently applied filters (excluding search)
+  const filtersActiveCount = React.useMemo(() => {
+    let count = Object.values(appliedFilterValues).filter(v => v && v.trim()).length;
+    Object.values(appliedDateFilters).forEach(df => {
+      if (df.from || df.to) count++;
+    });
+    return count;
+  }, [appliedFilterValues, appliedDateFilters]);
+
+  // Count of pending filters in modal (to show if user has made changes)
+  const pendingFiltersCount = React.useMemo(() => {
+    let count = Object.values(filterValues).filter(v => v && v.trim()).length;
+    Object.values(dateFilters).forEach(df => {
+      if (df.from || df.to) count++;
+    });
+    return count;
+  }, [filterValues, dateFilters]);
+
+  // Get icon for filter type
+  const getFilterIcon = (type: string) => {
+    switch (type) {
+      case 'select':
+        return (
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M8 9l4-4 4 4m0 6l-4 4-4-4" />
+          </svg>
+        );
+      case 'daterange':
+      case 'date':
+        return (
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          </svg>
+        );
+      default:
+        return (
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+          </svg>
+        );
+    }
+  };
+
+  // Get color for filter type
+  const getFilterColor = (type: string, hasValue: boolean) => {
+    if (!hasValue) return 'bg-gray-100 text-gray-400';
+    switch (type) {
+      case 'select':
+        return 'bg-purple-100 text-purple-600';
+      case 'daterange':
+      case 'date':
+        return 'bg-orange-100 text-orange-600';
+      default:
+        return 'bg-primary-100 text-primary-600';
+    }
+  };
+
+  // Get filter description
+  const getFilterDescription = (filter: typeof filters[0]) => {
+    const value = filterValues[filter.key];
+    const dateValue = dateFilters[filter.key];
+
+    if (filter.type === 'daterange' && dateValue?.from) {
+      const preset = datePresets[filter.key];
+      if (preset && preset !== 'custom') {
+        return DATE_PRESETS.find(p => p.value === preset)?.label || 'Período selecionado';
+      }
+      return `${dateValue.from?.split('T')[0] || ''} → ${dateValue.to?.split('T')[0] || ''}`;
+    }
+    if (filter.type === 'select' && value) {
+      const option = filter.options?.find(o => o.value === value);
+      return option?.label || value;
+    }
+    if (value) {
+      return `Contém: ${value}`;
+    }
+    return 'Clique para configurar';
+  };
+
+  // Check if filter has value (in modal)
+  const filterHasValue = (filter: typeof filters[0]) => {
+    if (filter.type === 'daterange') {
+      const dateValue = dateFilters[filter.key];
+      return !!(dateValue?.from || dateValue?.to);
+    }
+    return !!(filterValues[filter.key]);
   };
 
   return (
-    <div className="p-4 bg-gray-50/80 border-b border-gray-100">
-      <div className="flex flex-col sm:flex-row gap-3">
+    <div className="bg-gray-50/80 border-b border-gray-100">
+      {/* Main row: Search + Filter toggle + Clear */}
+      <div className="p-4 flex items-center gap-3">
         {/* Search input */}
-        <div className="flex-1 min-w-0">
+        <div className="flex-1 min-w-0 max-w-md">
           <div className="relative">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
               {Icons.search}
@@ -801,7 +1575,7 @@ const SearchFilter: React.FC<ElementProps> = ({ element, onAction }) => {
               onChange={(e) => setLocalSearch(e.target.value)}
               placeholder={searchPlaceholder}
               className={cn(
-                'w-full pl-10 pr-10 py-2.5 text-sm rounded-lg border transition-all',
+                'w-full pl-10 pr-10 py-2 text-sm rounded-lg border transition-all',
                 'focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500',
                 localSearch
                   ? 'border-primary-200 bg-primary-50/50'
@@ -813,7 +1587,7 @@ const SearchFilter: React.FC<ElementProps> = ({ element, onAction }) => {
                 onClick={() => {
                   setLocalSearch('');
                   setData(searchPath, '');
-                  executeSearch('', filterValuesRef.current);
+                  executeSearch('', appliedFilterValues, appliedDateFilters);
                 }}
                 className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
               >
@@ -823,69 +1597,258 @@ const SearchFilter: React.FC<ElementProps> = ({ element, onAction }) => {
           </div>
         </div>
 
-        {/* Mobile filter toggle */}
+        {/* Filter toggle button */}
         {filters.length > 0 && (
           <button
-            onClick={() => setShowFilters(!showFilters)}
+            onClick={() => setShowFilters(true)}
             className={cn(
-              'sm:hidden flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium border transition-all',
-              showFilters
+              'flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium border transition-all',
+              filtersActiveCount > 0
                 ? 'border-primary-200 bg-primary-50 text-primary-700'
-                : 'border-gray-200 bg-white text-gray-700'
+                : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
             )}
           >
             {Icons.filter}
-            <span>Filters</span>
-            {activeFilterCount > 0 && (
-              <span className="bg-primary-600 text-white text-xs font-semibold px-1.5 py-0.5 rounded-full min-w-[20px]">
-                {activeFilterCount}
+            <span>Filtros</span>
+            {filtersActiveCount > 0 && (
+              <span className="bg-primary-600 text-white text-xs font-semibold px-1.5 py-0.5 rounded-full min-w-[20px] text-center">
+                {filtersActiveCount}
               </span>
             )}
           </button>
         )}
 
-        {/* Filter fields */}
-        <div className={cn(
-          'flex flex-col sm:flex-row gap-3',
-          filters.length > 0 && !showFilters && 'hidden sm:flex'
-        )}>
-          {filters.map((filter) => (
-            <div key={filter.key} className="min-w-[140px]">
-              {filter.type === 'select' && filter.options ? (
-                <select
-                  onChange={(e) => handleFilterChange(filter.key, e.target.value)}
-                  className="w-full px-3 py-2.5 text-sm rounded-lg border border-gray-200 bg-white focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
-                >
-                  <option value="">{filter.label}</option>
-                  {filter.options.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <input
-                  type={filter.type === 'date' ? 'date' : 'text'}
-                  onChange={(e) => handleFilterChange(filter.key, e.target.value)}
-                  placeholder={filter.label}
-                  className="w-full px-3 py-2.5 text-sm rounded-lg border border-gray-200 bg-white focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
-                />
-              )}
-            </div>
-          ))}
-        </div>
-
-        {/* Clear button */}
-        {(localSearch || activeFilterCount > 0) && (
+        {/* Clear all button */}
+        {(localSearch || filtersActiveCount > 0) && (
           <button
             onClick={handleClear}
-            className="flex items-center gap-1.5 px-3 py-2.5 text-sm font-medium text-gray-500 hover:text-danger-600 hover:bg-danger-50 rounded-lg transition-colors"
+            className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-gray-500 hover:text-danger-600 hover:bg-danger-50 rounded-lg transition-colors"
           >
             {Icons.x}
-            <span className="hidden sm:inline">Clear</span>
+            <span>Limpar</span>
           </button>
         )}
       </div>
+
+      {/* Filter Modal */}
+      {showFilters && filters.length > 0 && (
+        <div className="fixed inset-0 z-50 flex flex-col justify-end md:justify-center md:items-center md:p-4">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/50"
+            onClick={() => setShowFilters(false)}
+          />
+
+          {/* Bottom Sheet (mobile) / Modal (desktop) */}
+          <div className="relative bg-white rounded-t-2xl md:rounded-2xl shadow-xl w-full md:max-w-md max-h-[85vh] flex flex-col animate-slide-up md:animate-none md:modal-enter overflow-hidden">
+            {/* Handle bar - mobile only */}
+            <div className="flex justify-center pt-3 pb-1 md:hidden">
+              <div className="w-10 h-1 bg-gray-300 rounded-full" />
+            </div>
+
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-3 md:py-4 md:border-b md:border-gray-100">
+              <h3 className="text-lg font-semibold text-gray-900">Filtros</h3>
+              <button
+                onClick={() => setShowFilters(false)}
+                className="p-2 -mr-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors"
+              >
+                {Icons.x}
+              </button>
+            </div>
+
+            {/* Subtitle */}
+            <div className="px-5 py-2">
+              <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
+                {filtersActiveCount > 0 ? `${filtersActiveCount} filtro(s) ativo(s)` : 'Nenhum filtro ativo'}
+              </p>
+            </div>
+
+            {/* Filter list */}
+            <div className="flex-1 overflow-y-auto">
+              {filters.map((filter) => {
+                const hasValue = filterHasValue(filter);
+                return (
+                  <div
+                    key={filter.key}
+                    className="px-5 py-4 hover:bg-gray-50 active:bg-gray-100 transition-colors"
+                  >
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${getFilterColor(filter.type, hasValue)}`}>
+                        {getFilterIcon(filter.type)}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-900">{filter.label}</p>
+                        <p className="text-xs text-gray-500">{getFilterDescription(filter)}</p>
+                      </div>
+                      {hasValue && (
+                        <button
+                          onClick={() => {
+                            if (filter.type === 'daterange') {
+                              setDateFilters(prev => {
+                                const updated = { ...prev };
+                                delete updated[filter.key];
+                                return updated;
+                              });
+                              setDatePresets(prev => {
+                                const updated = { ...prev };
+                                delete updated[filter.key];
+                                return updated;
+                              });
+                            } else {
+                              setFilterValues(prev => ({ ...prev, [filter.key]: '' }));
+                            }
+                          }}
+                          className="p-1.5 text-gray-400 hover:text-danger-600 hover:bg-danger-50 rounded-lg transition-colors"
+                        >
+                          {Icons.x}
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Filter input */}
+                    <div className="ml-13">
+                      {filter.type === 'select' && filter.options ? (
+                        <select
+                          value={filterValues[filter.key] || ''}
+                          onChange={(e) => handleFilterChange(filter.key, e.target.value)}
+                          className="w-full px-3 py-3 text-sm rounded-xl border border-gray-200 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 focus:bg-white transition-all"
+                        >
+                          <option value="">Todos</option>
+                          {filter.options.map((opt) => (
+                            <option key={opt.value} value={opt.value}>
+                              {opt.label}
+                            </option>
+                          ))}
+                        </select>
+                      ) : filter.type === 'daterange' ? (
+                        <div className="flex items-center gap-2">
+                          <select
+                            value={datePresets[filter.key] || ''}
+                            onChange={(e) => handleDatePresetChange(filter.key, e.target.value, filter.includeTime)}
+                            className="flex-1 px-3 py-3 text-sm rounded-xl border border-gray-200 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 focus:bg-white transition-all"
+                          >
+                            {DATE_PRESETS.map((preset) => (
+                              <option key={preset.value} value={preset.value}>
+                                {preset.label}
+                              </option>
+                            ))}
+                          </select>
+                          {datePresets[filter.key] === 'custom' && (
+                            <button
+                              onClick={() => {
+                                setTempDateRange({
+                                  from: dateFilters[filter.key]?.from || '',
+                                  to: dateFilters[filter.key]?.to || ''
+                                });
+                                setCustomDateModal({ key: filter.key, includeTime: filter.includeTime || false });
+                              }}
+                              className="px-3 py-3 text-sm bg-primary-100 text-primary-700 rounded-xl hover:bg-primary-200 transition-colors"
+                            >
+                              Editar
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        <input
+                          type={filter.type === 'date' ? 'date' : 'text'}
+                          value={filterValues[filter.key] || ''}
+                          onChange={(e) => handleFilterChange(filter.key, e.target.value)}
+                          placeholder={`Buscar ${filter.label.toLowerCase()}...`}
+                          className="w-full px-3 py-3 text-sm rounded-xl border border-gray-200 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 focus:bg-white transition-all"
+                        />
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center gap-3 px-5 py-4 border-t border-gray-100 bg-gray-50/50">
+              <button
+                onClick={handleClear}
+                disabled={pendingFiltersCount === 0 && filtersActiveCount === 0}
+                className="flex-1 py-3 text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Limpar todos
+              </button>
+              <button
+                onClick={handleApplyFilters}
+                className="flex-1 py-3 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-xl transition-colors"
+              >
+                Aplicar filtros
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Custom Date Range Modal */}
+      {customDateModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-gray-900/60"
+            onClick={handleCancelCustomDate}
+          />
+          {/* Modal */}
+          <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden modal-enter">
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+              <h3 className="text-lg font-semibold text-gray-900">Período Personalizado</h3>
+              <button
+                onClick={handleCancelCustomDate}
+                className="p-2 -mr-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                {Icons.x}
+              </button>
+            </div>
+
+            <div className="px-5 py-4 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Data Inicial
+                </label>
+                <input
+                  type={customDateModal.includeTime ? 'datetime-local' : 'date'}
+                  value={tempDateRange.from}
+                  onChange={(e) => setTempDateRange(prev => ({ ...prev, from: e.target.value }))}
+                  className="w-full px-3 py-2.5 text-sm rounded-xl border border-gray-200 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 focus:bg-white transition-all"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Data Final
+                </label>
+                <input
+                  type={customDateModal.includeTime ? 'datetime-local' : 'date'}
+                  value={tempDateRange.to}
+                  onChange={(e) => setTempDateRange(prev => ({ ...prev, to: e.target.value }))}
+                  className="w-full px-3 py-2.5 text-sm rounded-xl border border-gray-200 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 focus:bg-white transition-all"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 px-5 py-4 border-t border-gray-100 bg-gray-50/50">
+              <button
+                onClick={handleCancelCustomDate}
+                className="flex-1 py-2.5 text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-xl transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleApplyCustomDate}
+                disabled={!tempDateRange.from && !tempDateRange.to}
+                className="flex-1 py-2.5 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Aplicar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -1073,6 +2036,146 @@ const DateField: React.FC<ElementProps> = ({ element }) => {
         required={required}
         className="input-base"
       />
+    </div>
+  );
+};
+
+// JsonField Component - For editing JSON/JSONB fields
+const JsonField: React.FC<ElementProps> = ({ element }) => {
+  const { label, valuePath, disabled, required } = element.props as {
+    label: string;
+    valuePath: string;
+    disabled?: boolean;
+    required?: boolean;
+  };
+
+  const value = useDataValue(valuePath);
+  const setData = useSetData();
+  const [isExpanded, setIsExpanded] = React.useState(false);
+  const [textValue, setTextValue] = React.useState('');
+  const [error, setError] = React.useState<string | null>(null);
+
+  // Initialize text value from data
+  React.useEffect(() => {
+    if (value !== undefined && value !== null) {
+      try {
+        setTextValue(JSON.stringify(value, null, 2));
+        setError(null);
+      } catch {
+        setTextValue(String(value));
+      }
+    } else {
+      setTextValue('');
+    }
+  }, [value]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const newText = e.target.value;
+    setTextValue(newText);
+
+    if (!newText.trim()) {
+      setError(null);
+      setData(valuePath, null);
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(newText);
+      setError(null);
+      setData(valuePath, parsed);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Invalid JSON');
+    }
+  };
+
+  const formatJson = () => {
+    try {
+      const parsed = JSON.parse(textValue);
+      const formatted = JSON.stringify(parsed, null, 2);
+      setTextValue(formatted);
+      setError(null);
+    } catch {
+      // Already has error set from handleChange
+    }
+  };
+
+  const isObject = typeof value === 'object' && value !== null;
+  const previewText = isObject
+    ? Array.isArray(value)
+      ? `[${value.length} items]`
+      : `{${Object.keys(value).length} keys}`
+    : '—';
+
+  return (
+    <div className="space-y-1.5">
+      <label className="block text-sm font-medium text-gray-700">
+        {label}
+        {required && <span className="text-danger-500 ml-0.5">*</span>}
+      </label>
+
+      {!isExpanded ? (
+        <button
+          type="button"
+          onClick={() => setIsExpanded(true)}
+          disabled={disabled}
+          className="w-full flex items-center justify-between px-3 py-2.5 text-sm border border-gray-200 rounded-lg bg-white hover:bg-gray-50 transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <span className="flex items-center gap-2 text-gray-700">
+            <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
+            </svg>
+            <span className="font-mono text-xs bg-gray-100 px-2 py-0.5 rounded">{previewText}</span>
+          </span>
+          <span className="text-xs text-primary-600 font-medium">Editar JSON</span>
+        </button>
+      ) : (
+        <div className="border border-gray-200 rounded-lg overflow-hidden">
+          <div className="flex items-center justify-between px-3 py-2 bg-gray-50 border-b border-gray-200">
+            <span className="text-xs font-medium text-gray-600 flex items-center gap-1.5">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
+              </svg>
+              JSON Editor
+            </span>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={formatJson}
+                className="px-2 py-1 text-xs text-gray-600 hover:bg-gray-200 rounded transition-colors"
+                title="Formatar JSON"
+              >
+                Formatar
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsExpanded(false)}
+                className="px-2 py-1 text-xs text-gray-600 hover:bg-gray-200 rounded transition-colors"
+              >
+                Minimizar
+              </button>
+            </div>
+          </div>
+          <textarea
+            value={textValue}
+            onChange={handleChange}
+            disabled={disabled}
+            rows={10}
+            className={cn(
+              'w-full px-3 py-2 text-sm font-mono bg-white focus:outline-none resize-y',
+              error && 'bg-red-50'
+            )}
+            placeholder='{"key": "value"}'
+          />
+          {error && (
+            <div className="px-3 py-2 bg-red-50 border-t border-red-200 text-xs text-red-600 flex items-center gap-1.5">
+              <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              {error}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 };
@@ -1364,6 +2467,16 @@ const FormModal: React.FC<ElementProps> = ({ element, children, onAction }) => {
   const errorMessage = errorMessageRaw ? String(errorMessageRaw) : null;
   const setData = useSetData();
   const [isSubmitting, setIsSubmitting] = React.useState(false);
+
+  // Prevent background scroll when modal is open
+  React.useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = '';
+      };
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -1674,6 +2787,7 @@ export const registry: Record<string, React.FC<ElementProps>> = {
   TextField,
   NumberField,
   DateField,
+  JsonField,
   SelectField,
   Button,
   Alert,
