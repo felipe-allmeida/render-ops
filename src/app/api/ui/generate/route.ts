@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import prisma from '@/lib/db';
-import { query, mapPgTypeToFieldType } from '@/lib/pg-client';
+import { getAdapter } from '@/lib/database';
 import { generateCrudUI } from '@/lib/ui-generator';
 import { z } from 'zod';
+import { ensureTenant } from '@/lib/tenant';
 
 const generateUISchema = z.object({
   connectionId: z.string(),
@@ -11,20 +12,6 @@ const generateUISchema = z.object({
   type: z.enum(['crud', 'list']).default('crud'),
   readonly: z.boolean().optional().default(false),
 });
-
-interface ColumnInfo {
-  column_name: string;
-  data_type: string;
-  udt_name: string;
-  is_nullable: string;
-  column_default: string | null;
-  character_maximum_length: number | null;
-}
-
-interface ConstraintInfo {
-  constraint_type: string;
-  column_name: string;
-}
 
 // POST /api/ui/generate - Generate UI JSON for a table
 export async function POST(request: NextRequest) {
@@ -47,11 +34,14 @@ export async function POST(request: NextRequest) {
 
     const { connectionId, table, readonly } = validation.data;
 
+    // Get user's tenant
+    const tenant = await ensureTenant(session.user.id, session.user.name);
+
     // Get the connection
     const connection = await prisma.connection.findFirst({
       where: {
         id: connectionId,
-        userId: session.user.id,
+        tenantId: tenant.tenantId,
       },
     });
 
@@ -59,75 +49,37 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Connection not found' }, { status: 404 });
     }
 
-    // Validate table name
-    const tableNameRegex = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+    // Validate table name (allow dots for schema.table notation)
+    const tableNameRegex = /^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)?$/;
     if (!tableNameRegex.test(table)) {
       return NextResponse.json({ error: 'Invalid table name' }, { status: 400 });
     }
 
-    // Get column information
-    const columns = await query<ColumnInfo>(
-      connection.connectionString,
-      `
-      SELECT
-        column_name,
-        data_type,
-        udt_name,
-        is_nullable,
-        column_default,
-        character_maximum_length
-      FROM information_schema.columns
-      WHERE table_schema = 'public' AND table_name = $1
-      ORDER BY ordinal_position
-      `,
-      [table]
-    );
+    // Get adapter for the database type
+    const adapter = getAdapter(connection.connectionString);
 
-    if (columns.length === 0) {
+    // Get table schema using the adapter
+    const tableSchema = await adapter.getTableSchema(table);
+
+    if (tableSchema.columns.length === 0) {
       return NextResponse.json({ error: 'Table not found' }, { status: 404 });
     }
 
-    // Get primary key constraints
-    const constraints = await query<ConstraintInfo>(
-      connection.connectionString,
-      `
-      SELECT
-        tc.constraint_type,
-        kcu.column_name
-      FROM information_schema.table_constraints tc
-      JOIN information_schema.key_column_usage kcu
-        ON tc.constraint_name = kcu.constraint_name
-        AND tc.table_schema = kcu.table_schema
-      WHERE tc.table_schema = 'public'
-        AND tc.table_name = $1
-        AND tc.constraint_type IN ('PRIMARY KEY', 'UNIQUE')
-      `,
-      [table]
-    );
-
-    const primaryKeyColumns = constraints
-      .filter((c) => c.constraint_type === 'PRIMARY KEY')
-      .map((c) => c.column_name);
-
-    const uniqueColumns = constraints
-      .filter((c) => c.constraint_type === 'UNIQUE')
-      .map((c) => c.column_name);
-
-    // Build schema
+    // Build schema in the format expected by generateCrudUI
     const schema = {
-      table,
-      columns: columns.map((col) => ({
-        name: col.column_name,
-        type: col.data_type,
-        udtType: col.udt_name,
-        fieldType: mapPgTypeToFieldType(col.udt_name),
-        nullable: col.is_nullable === 'YES',
-        hasDefault: col.column_default !== null,
-        isPrimaryKey: primaryKeyColumns.includes(col.column_name),
-        isUnique: uniqueColumns.includes(col.column_name),
-        maxLength: col.character_maximum_length,
+      table: tableSchema.name,
+      columns: tableSchema.columns.map((col) => ({
+        name: col.name,
+        type: col.type,
+        udtType: col.type, // Use native type as udtType
+        fieldType: col.fieldType,
+        nullable: col.nullable,
+        hasDefault: col.defaultValue != null, // Check for both null and undefined
+        isPrimaryKey: col.isPrimaryKey,
+        isUnique: col.isPrimaryKey, // Treat primary keys as unique
+        maxLength: col.maxLength,
       })),
-      primaryKey: primaryKeyColumns,
+      primaryKey: tableSchema.primaryKey,
     };
 
     // Generate UI

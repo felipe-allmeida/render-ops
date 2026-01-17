@@ -1,15 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import prisma from '@/lib/db';
-import { query } from '@/lib/pg-client';
+import { getAdapter } from '@/lib/database';
+import { ensureTenant, requireTenantPermission } from '@/lib/tenant';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
-}
-
-interface TableInfo {
-  table_name: string;
-  table_type: string;
 }
 
 // GET /api/connections/:id/tables - List tables in the connected database
@@ -22,10 +18,19 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    // Get user's tenant
+    const tenant = await ensureTenant(session.user.id, session.user.name);
+
+    // Check read permission
+    const permission = await requireTenantPermission(session.user.id, tenant.tenantId, 'read');
+    if (!permission.allowed) {
+      return NextResponse.json({ error: permission.error }, { status: 403 });
+    }
+
     const connection = await prisma.connection.findFirst({
       where: {
         id,
-        userId: session.user.id,
+        tenantId: tenant.tenantId,
       },
     });
 
@@ -33,17 +38,9 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Connection not found' }, { status: 404 });
     }
 
-    // Query information_schema for tables
-    const tables = await query<TableInfo>(
-      connection.connectionString,
-      `
-      SELECT table_name, table_type
-      FROM information_schema.tables
-      WHERE table_schema = 'public'
-        AND table_type IN ('BASE TABLE', 'VIEW')
-      ORDER BY table_name
-      `
-    );
+    // Get adapter and list tables
+    const adapter = getAdapter(connection.connectionString);
+    const tables = await adapter.listTables();
 
     // Filter out system/internal tables
     // Auth tables - always hidden
@@ -69,7 +66,7 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
 
     const filteredTables = tables
       .filter((t) => {
-        const name = t.table_name.toLowerCase();
+        const name = t.name.toLowerCase();
         // Skip auth tables (always hidden)
         if (authTables.includes(name)) return false;
         // Skip migration/system tables
@@ -80,11 +77,7 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
         if (name.startsWith('prisma_')) return false;
         if (name.startsWith('pg_')) return false;
         return true;
-      })
-      .map((t) => ({
-        name: t.table_name,
-        type: t.table_type === 'BASE TABLE' ? 'table' : 'view',
-      }));
+      });
 
     return NextResponse.json({ tables: filteredTables });
   } catch (error) {

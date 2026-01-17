@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useRef, useState, useEffect, useLayoutEffect } from 'react';
+import React from 'react';
 import {
   BarChart as RechartsBar,
   Bar,
@@ -18,38 +18,6 @@ import {
   Cell,
   ResponsiveContainer,
 } from 'recharts';
-
-// Custom hook to get container dimensions with better resize handling
-function useContainerSize(ref: React.RefObject<HTMLDivElement | null>) {
-  const [size, setSize] = useState({ width: 0, height: 0 });
-
-  useLayoutEffect(() => {
-    const element = ref.current;
-    if (!element) return;
-
-    const updateSize = () => {
-      const rect = element.getBoundingClientRect();
-      if (rect.width > 0 && rect.height > 0) {
-        setSize({ width: Math.floor(rect.width), height: Math.floor(rect.height) });
-      }
-    };
-
-    // Initial measurement
-    updateSize();
-
-    const resizeObserver = new ResizeObserver(() => {
-      // Use requestAnimationFrame to batch updates
-      requestAnimationFrame(updateSize);
-    });
-    resizeObserver.observe(element);
-
-    return () => {
-      resizeObserver.disconnect();
-    };
-  }, []);
-
-  return size;
-}
 
 // Color palette for charts
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16'];
@@ -218,9 +186,6 @@ interface BarChartWidgetProps {
 }
 
 export function BarChartWidget({ data, title, xAxisKey = 'label', yAxisKey = 'value', loading }: BarChartWidgetProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const { width, height } = useContainerSize(containerRef);
-
   if (loading) {
     return (
       <div className="h-full p-4 flex items-center justify-center">
@@ -240,19 +205,12 @@ export function BarChartWidget({ data, title, xAxisKey = 'label', yAxisKey = 'va
     );
   }
 
-  // Calculate chart height: container height minus title height and padding
-  const titleHeight = title ? 28 : 0;
-  const padding = 16;
-  const chartHeight = Math.max(100, height - titleHeight - padding * 2);
-
   return (
     <div className="h-full p-4 flex flex-col">
       {title && <h3 className="text-sm font-medium text-gray-700 mb-2 flex-shrink-0">{title}</h3>}
-      <div ref={containerRef} className="flex-1 min-h-0">
-        {width > 0 && height > 0 && (
+      <div className="flex-1 min-h-0">
+        <ResponsiveContainer width="100%" height="100%">
           <RechartsBar
-            width={width}
-            height={chartHeight}
             data={data}
             margin={{ top: 10, right: 10, left: 0, bottom: 20 }}
           >
@@ -270,7 +228,7 @@ export function BarChartWidget({ data, title, xAxisKey = 'label', yAxisKey = 'va
             />
             <Bar dataKey={yAxisKey} fill="#3b82f6" radius={[4, 4, 0, 0]} />
           </RechartsBar>
-        )}
+        </ResponsiveContainer>
       </div>
     </div>
   );
@@ -286,9 +244,6 @@ interface LineChartWidgetProps {
 }
 
 export function LineChartWidget({ data, title, xAxisKey = 'label', yAxisKey = 'value', loading }: LineChartWidgetProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const { width, height } = useContainerSize(containerRef);
-
   if (loading) {
     return (
       <div className="h-full p-4 flex items-center justify-center">
@@ -308,18 +263,12 @@ export function LineChartWidget({ data, title, xAxisKey = 'label', yAxisKey = 'v
     );
   }
 
-  const titleHeight = title ? 28 : 0;
-  const padding = 16;
-  const chartHeight = Math.max(100, height - titleHeight - padding * 2);
-
   return (
     <div className="h-full p-4 flex flex-col">
       {title && <h3 className="text-sm font-medium text-gray-700 mb-2 flex-shrink-0">{title}</h3>}
-      <div ref={containerRef} className="flex-1 min-h-0">
-        {width > 0 && height > 0 && (
+      <div className="flex-1 min-h-0">
+        <ResponsiveContainer width="100%" height="100%">
           <RechartsLine
-            width={width}
-            height={chartHeight}
             data={data}
             margin={{ top: 10, right: 10, left: 0, bottom: 20 }}
           >
@@ -344,7 +293,7 @@ export function LineChartWidget({ data, title, xAxisKey = 'label', yAxisKey = 'v
               activeDot={{ r: 6 }}
             />
           </RechartsLine>
-        )}
+        </ResponsiveContainer>
       </div>
     </div>
   );
@@ -358,9 +307,6 @@ interface PieChartWidgetProps {
 }
 
 export function PieChartWidget({ data, title, loading }: PieChartWidgetProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const { width, height } = useContainerSize(containerRef);
-
   if (loading) {
     return (
       <div className="h-full p-4 flex items-center justify-center">
@@ -380,33 +326,20 @@ export function PieChartWidget({ data, title, loading }: PieChartWidgetProps) {
     );
   }
 
-  // Calculate chart dimensions
-  const titleHeight = title ? 28 : 0;
-  const legendHeight = 40;
-  const padding = 12;
-  const chartHeight = Math.max(100, height - titleHeight - padding * 2);
-  const availableHeight = chartHeight - legendHeight - 10;
-  const availableWidth = width;
-
-  // Calculate radius to fit in the smaller dimension
-  const maxRadius = Math.min(availableWidth / 2, availableHeight / 2) * 0.8;
-  const outerRadius = Math.max(30, Math.min(maxRadius, 80));
-  const innerRadius = outerRadius * 0.5;
-
   return (
     <div className="h-full p-3 flex flex-col">
       {title && <h3 className="text-sm font-medium text-gray-700 mb-1 flex-shrink-0">{title}</h3>}
-      <div ref={containerRef} className="flex-1 min-h-0">
-        {width > 0 && height > 0 && (
-          <RechartsPie width={width} height={chartHeight}>
+      <div className="flex-1 min-h-0">
+        <ResponsiveContainer width="100%" height="100%">
+          <RechartsPie>
             <Pie
               data={data}
               dataKey="value"
               nameKey="label"
               cx="50%"
-              cy={`${((chartHeight - legendHeight) / 2 / chartHeight) * 100}%`}
-              innerRadius={innerRadius}
-              outerRadius={outerRadius}
+              cy="45%"
+              innerRadius="40%"
+              outerRadius="70%"
               paddingAngle={1}
             >
               {data.map((_, index) => (
@@ -425,12 +358,12 @@ export function PieChartWidget({ data, title, loading }: PieChartWidgetProps) {
             />
             <Legend
               verticalAlign="bottom"
-              height={legendHeight}
+              height={36}
               wrapperStyle={{ fontSize: 10, paddingTop: 5 }}
               formatter={(value) => <span style={{ color: '#374151', fontSize: 10 }}>{value}</span>}
             />
           </RechartsPie>
-        )}
+        </ResponsiveContainer>
       </div>
     </div>
   );
@@ -446,9 +379,6 @@ interface AreaChartWidgetProps {
 }
 
 export function AreaChartWidget({ data, title, xAxisKey = 'label', yAxisKey = 'value', loading }: AreaChartWidgetProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const { width, height } = useContainerSize(containerRef);
-
   if (loading) {
     return (
       <div className="h-full p-4 flex items-center justify-center">
@@ -468,18 +398,12 @@ export function AreaChartWidget({ data, title, xAxisKey = 'label', yAxisKey = 'v
     );
   }
 
-  const titleHeight = title ? 28 : 0;
-  const padding = 16;
-  const chartHeight = Math.max(100, height - titleHeight - padding * 2);
-
   return (
     <div className="h-full p-4 flex flex-col">
       {title && <h3 className="text-sm font-medium text-gray-700 mb-2 flex-shrink-0">{title}</h3>}
-      <div ref={containerRef} className="flex-1 min-h-0">
-        {width > 0 && height > 0 && (
+      <div className="flex-1 min-h-0">
+        <ResponsiveContainer width="100%" height="100%">
           <RechartsArea
-            width={width}
-            height={chartHeight}
             data={data}
             margin={{ top: 10, right: 10, left: 0, bottom: 20 }}
           >
@@ -510,7 +434,7 @@ export function AreaChartWidget({ data, title, xAxisKey = 'label', yAxisKey = 'v
               fill="url(#colorValue)"
             />
           </RechartsArea>
-        )}
+        </ResponsiveContainer>
       </div>
     </div>
   );

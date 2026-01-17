@@ -7,20 +7,67 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ============== MULTI-TENANT MODELS ==============
+
+model Tenant {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  memberships TenantMembership[]
+  connections Connection[]
+  dashboards  Dashboard[]
+  auditLogs   AuditLog[]
+
+  @@index([slug])
+}
+
+enum TenantRole {
+  OWNER  // Full access, can delete tenant
+  ADMIN  // Manage members, full CRUD
+  MEMBER // CRUD on resources
+  VIEWER // Read-only
+}
+
+model TenantMembership {
+  id        String     @id @default(cuid())
+  tenantId  String
+  userId    String     // Keycloak sub
+  role      TenantRole
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, userId])
+  @@index([userId])
+  @@index([tenantId])
+}
+
+// ============== RESOURCE MODELS ==============
+
 model Connection {
   id               String   @id @default(cuid())
   name             String
   connectionString String
-  userId           String
+  dbType           String   @default("postgresql")
+  tenantId         String
+  createdBy        String   // userId who created (audit)
   readonly         Boolean  @default(false)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
-  @@index([userId])
+  tenant     Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  dashboards DashboardConnection[]
+
+  @@index([tenantId])
 }
 
 model AuditLog {
   id         String   @id @default(cuid())
+  tenantId   String?
   userId     String
   actionName String
   params     Json?
@@ -28,6 +75,9 @@ model AuditLog {
   error      String?
   timestamp  DateTime @default(now())
 
+  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
   @@index([userId])
   @@index([timestamp])
 }
@@ -36,23 +86,27 @@ model Dashboard {
   id          String   @id @default(cuid())
   name        String
   description String?
-  userId      String
+  tenantId    String
+  createdBy   String   // userId who created (audit)
   layout      Json     @default("{}")
   widgets     Json     @default("[]")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  tenant      Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   connections DashboardConnection[]
 
-  @@index([userId])
+  @@index([tenantId])
 }
 
 model DashboardConnection {
-  id           String    @id @default(cuid())
+  id           String     @id @default(cuid())
   dashboardId  String
   connectionId String
-  dashboard    Dashboard @relation(fields: [dashboardId], references: [id], onDelete: Cascade)
+  dashboard    Dashboard  @relation(fields: [dashboardId], references: [id], onDelete: Cascade)
+  connection   Connection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
 
   @@unique([dashboardId, connectionId])
   @@index([dashboardId])
+  @@index([connectionId])
 }

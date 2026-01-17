@@ -1,5 +1,6 @@
 import NextAuth, { type NextAuthConfig } from 'next-auth';
 import KeycloakProvider from 'next-auth/providers/keycloak';
+import type { TenantRole } from '@prisma/client';
 
 declare module 'next-auth' {
   interface Session {
@@ -11,6 +12,9 @@ declare module 'next-auth' {
     };
     accessToken?: string;
     error?: string;
+    // Multi-tenant context
+    tenantId?: string;
+    tenantRole?: TenantRole;
   }
 }
 
@@ -20,6 +24,9 @@ declare module '@auth/core/jwt' {
     refreshToken?: string;
     expiresAt?: number;
     error?: string;
+    // Multi-tenant context (cached)
+    tenantId?: string;
+    tenantRole?: TenantRole;
   }
 }
 
@@ -101,6 +108,9 @@ export const authConfig: NextAuthConfig = {
       if (token.sub) {
         session.user.id = token.sub;
       }
+      // Include tenant context in session
+      session.tenantId = token.tenantId;
+      session.tenantRole = token.tenantRole;
       return session;
     },
   },

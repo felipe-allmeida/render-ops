@@ -37,11 +37,14 @@ export function DataProvider({ initialData = {}, children }: DataProviderProps) 
   }, []);
 
   const setMultiple = useCallback((updates: Record<string, unknown>) => {
+    console.log('[DataProvider] setMultiple called with:', Object.keys(updates));
     setData((prevData) => {
       const newData = deepClone(prevData);
       Object.entries(updates).forEach(([path, value]) => {
+        console.log(`[DataProvider] Setting ${path}:`, typeof value === 'object' ? JSON.stringify(value).slice(0, 100) + '...' : value);
         setValueByPath(newData, path, value);
       });
+      console.log('[DataProvider] New data form:', newData.form);
       return newData;
     });
   }, []);

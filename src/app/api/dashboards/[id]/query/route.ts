@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import prisma from '@/lib/db';
-import { query } from '@/lib/pg-client';
+import { getAdapter } from '@/lib/database';
 import { z } from 'zod';
+import { ensureTenant, requireTenantPermission } from '@/lib/tenant';
 
 // Schema for widget query
 const querySchema = z.object({
@@ -36,11 +37,20 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     const { id } = await params;
 
-    // Verify dashboard exists and belongs to user
+    // Get user's tenant
+    const tenant = await ensureTenant(session.user.id, session.user.name);
+
+    // Check read permission
+    const permission = await requireTenantPermission(session.user.id, tenant.tenantId, 'read');
+    if (!permission.allowed) {
+      return NextResponse.json({ error: permission.error }, { status: 403 });
+    }
+
+    // Verify dashboard exists and belongs to tenant
     const dashboard = await prisma.dashboard.findFirst({
       where: {
         id,
-        userId: session.user.id,
+        tenantId: tenant.tenantId,
       },
       include: {
         connections: {
@@ -78,7 +88,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const connection = await prisma.connection.findFirst({
       where: {
         id: connectionId,
-        userId: session.user.id,
+        tenantId: tenant.tenantId,
       },
     });
 
@@ -86,13 +96,16 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Connection not found' }, { status: 404 });
     }
 
+    // Get the database adapter
+    const adapter = getAdapter(connection.connectionString);
+
     // Build and execute query
-    let result;
     const safeTable = table ? sanitizeIdentifier(table) : null;
 
     if (aggregation && safeTable) {
       // Aggregation query (COUNT, SUM, AVG, MIN, MAX)
       let sql: string;
+      let queryResult;
 
       if (aggregation === 'count' && !field) {
         // COUNT(*) - no field needed
@@ -101,22 +114,22 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
           // Use date_trunc if datePeriod is specified for date grouping
           const groupByExpr = datePeriod
-            ? `date_trunc('${datePeriod}', "${safeGroupBy}")`
-            : `"${safeGroupBy}"`;
+            ? `date_trunc('${datePeriod}', ${adapter.escapeIdentifier(safeGroupBy)})`
+            : adapter.escapeIdentifier(safeGroupBy);
 
           // Order by label (date) for time series, by value for categories
           const orderBy = datePeriod ? 'label ASC' : 'value DESC';
 
           sql = `
             SELECT ${groupByExpr} as label, COUNT(*) as value
-            FROM "${safeTable}"
+            FROM ${adapter.escapeIdentifier(safeTable)}
             GROUP BY ${groupByExpr}
             ORDER BY ${orderBy}
-            LIMIT $1
+            LIMIT ${adapter.buildParameterPlaceholder(1)}
           `;
-          result = await query(connection.connectionString, sql, [limit]);
+          queryResult = await adapter.query(sql, [limit]);
           // Convert value to number and format date labels
-          const parsedResult = result.map((row: Record<string, unknown>) => ({
+          const parsedResult = queryResult.rows.map((row: Record<string, unknown>) => ({
             label: datePeriod ? formatDateLabel(row.label, datePeriod) : row.label,
             value: Number(row.value) || 0,
           }));
@@ -126,11 +139,11 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
             type: 'grouped',
           });
         } else {
-          sql = `SELECT COUNT(*) as value FROM "${safeTable}"`;
-          result = await query<{ value: string }>(connection.connectionString, sql, []);
+          sql = `SELECT COUNT(*) as value FROM ${adapter.escapeIdentifier(safeTable)}`;
+          queryResult = await adapter.query(sql, []);
           return NextResponse.json({
             success: true,
-            data: parseInt(result[0]?.value || '0', 10),
+            data: parseInt(queryResult.rows[0]?.value || '0', 10),
             type: 'single',
           });
         }
@@ -143,22 +156,22 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
           // Use date_trunc if datePeriod is specified for date grouping
           const groupByExpr = datePeriod
-            ? `date_trunc('${datePeriod}', "${safeGroupBy}")`
-            : `"${safeGroupBy}"`;
+            ? `date_trunc('${datePeriod}', ${adapter.escapeIdentifier(safeGroupBy)})`
+            : adapter.escapeIdentifier(safeGroupBy);
 
           // Order by label (date) for time series, by value for categories
           const orderBy = datePeriod ? 'label ASC' : 'value DESC';
 
           sql = `
-            SELECT ${groupByExpr} as label, ${aggregation.toUpperCase()}("${safeField}") as value
-            FROM "${safeTable}"
+            SELECT ${groupByExpr} as label, ${aggregation.toUpperCase()}(${adapter.escapeIdentifier(safeField)}) as value
+            FROM ${adapter.escapeIdentifier(safeTable)}
             GROUP BY ${groupByExpr}
             ORDER BY ${orderBy}
-            LIMIT $1
+            LIMIT ${adapter.buildParameterPlaceholder(1)}
           `;
-          result = await query(connection.connectionString, sql, [limit]);
+          queryResult = await adapter.query(sql, [limit]);
           // Convert value to number and format date labels
-          const parsedResult = result.map((row: Record<string, unknown>) => ({
+          const parsedResult = queryResult.rows.map((row: Record<string, unknown>) => ({
             label: datePeriod ? formatDateLabel(row.label, datePeriod) : row.label,
             value: Number(row.value) || 0,
           }));
@@ -168,11 +181,11 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
             type: 'grouped',
           });
         } else {
-          sql = `SELECT ${aggregation.toUpperCase()}("${safeField}") as value FROM "${safeTable}"`;
-          result = await query(connection.connectionString, sql, []);
+          sql = `SELECT ${aggregation.toUpperCase()}(${adapter.escapeIdentifier(safeField)}) as value FROM ${adapter.escapeIdentifier(safeTable)}`;
+          queryResult = await adapter.query(sql, []);
           return NextResponse.json({
             success: true,
-            data: Number(result[0]?.value) || 0,
+            data: Number(queryResult.rows[0]?.value) || 0,
             type: 'single',
           });
         }
@@ -188,24 +201,22 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       const offset = (page - 1) * limit;
 
       // Get total count
-      const countResult = await query<{ count: string }>(
-        connection.connectionString,
-        `SELECT COUNT(*) as count FROM "${safeTable}"`,
+      const countResult = await adapter.query(
+        `SELECT COUNT(*) as count FROM ${adapter.escapeIdentifier(safeTable)}`,
         []
       );
-      const total = parseInt(countResult[0]?.count || '0', 10);
+      const total = parseInt(countResult.rows[0]?.count || '0', 10);
 
       // Get data
-      const dataResult = await query(
-        connection.connectionString,
-        `SELECT * FROM "${safeTable}" LIMIT $1 OFFSET $2`,
+      const dataResult = await adapter.query(
+        `SELECT * FROM ${adapter.escapeIdentifier(safeTable)} LIMIT ${adapter.buildParameterPlaceholder(1)} OFFSET ${adapter.buildParameterPlaceholder(2)}`,
         [limit, offset]
       );
 
       return NextResponse.json({
         success: true,
         data: {
-          items: dataResult,
+          items: dataResult.rows,
           pagination: {
             page,
             limit,

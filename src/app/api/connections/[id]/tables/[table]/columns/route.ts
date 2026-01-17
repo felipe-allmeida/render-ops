@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import prisma from '@/lib/db';
-import { query } from '@/lib/pg-client';
+import { getAdapter } from '@/lib/database';
+import { ensureTenant, requireTenantPermission } from '@/lib/tenant';
 
 interface RouteParams {
   params: Promise<{ id: string; table: string }>;
@@ -18,11 +19,20 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     const { id, table } = await params;
 
+    // Get user's tenant
+    const tenant = await ensureTenant(session.user.id, session.user.name);
+
+    // Check read permission
+    const permission = await requireTenantPermission(session.user.id, tenant.tenantId, 'read');
+    if (!permission.allowed) {
+      return NextResponse.json({ error: permission.error }, { status: 403 });
+    }
+
     // Get connection
     const connection = await prisma.connection.findFirst({
       where: {
         id,
-        userId: session.user.id,
+        tenantId: tenant.tenantId,
       },
     });
 
@@ -30,39 +40,21 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Connection not found' }, { status: 404 });
     }
 
-    // Validate table name to prevent SQL injection
+    // Validate table name to prevent injection
     if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(table)) {
       return NextResponse.json({ error: 'Invalid table name' }, { status: 400 });
     }
 
-    // Get column information
-    const columns = await query<{
-      column_name: string;
-      data_type: string;
-      is_nullable: string;
-      column_default: string | null;
-    }>(
-      connection.connectionString,
-      `
-        SELECT
-          column_name,
-          data_type,
-          is_nullable,
-          column_default
-        FROM information_schema.columns
-        WHERE table_name = $1
-          AND table_schema = 'public'
-        ORDER BY ordinal_position
-      `,
-      [table]
-    );
+    // Get adapter and table schema
+    const adapter = getAdapter(connection.connectionString);
+    const schema = await adapter.getTableSchema(table);
 
     return NextResponse.json({
-      columns: columns.map((col) => ({
-        name: col.column_name,
-        type: col.data_type,
-        nullable: col.is_nullable === 'YES',
-        default: col.column_default,
+      columns: schema.columns.map((col) => ({
+        name: col.name,
+        type: col.type,
+        nullable: col.nullable,
+        default: col.defaultValue !== undefined,
       })),
     });
   } catch (error) {

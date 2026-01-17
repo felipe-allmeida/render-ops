@@ -1904,6 +1904,11 @@ const TextField: React.FC<ElementProps> = ({ element }) => {
   const value = useDataValue(valuePath) ?? '';
   const setData = useSetData();
 
+  // Debug logging
+  React.useEffect(() => {
+    console.log(`[TextField] ${label} - valuePath: ${valuePath}, value:`, value);
+  }, [label, valuePath, value]);
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     setData(valuePath, e.target.value);
   };

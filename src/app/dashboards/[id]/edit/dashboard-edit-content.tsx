@@ -44,6 +44,7 @@ interface Dashboard {
 interface DashboardEditContentProps {
   dashboardId: string;
   user: User;
+  embedded?: boolean;
 }
 
 const CHART_TYPES = [
@@ -78,7 +79,7 @@ const DATE_PERIODS = [
 
 const DATE_TYPES = ['date', 'timestamp', 'timestamp with time zone', 'timestamp without time zone', 'timestamptz'];
 
-export function DashboardEditContent({ dashboardId, user }: DashboardEditContentProps) {
+export function DashboardEditContent({ dashboardId, user, embedded = false }: DashboardEditContentProps) {
   const router = useRouter();
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [connections, setConnections] = useState<Connection[]>([]);
@@ -248,7 +249,7 @@ export function DashboardEditContent({ dashboardId, user }: DashboardEditContent
 
       if (!response.ok) throw new Error('Failed to save dashboard');
 
-      router.push(`/dashboards/${dashboardId}`);
+      router.push(`/workspace?view=dashboard&id=${dashboardId}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save');
     } finally {
@@ -462,7 +463,7 @@ export function DashboardEditContent({ dashboardId, user }: DashboardEditContent
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className={`${embedded ? 'flex-1' : 'min-h-screen'} bg-gray-50 flex items-center justify-center`}>
         <div className="text-center">
           <div className="w-12 h-12 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin mx-auto mb-4" />
           <p className="text-gray-600">Loading editor...</p>
@@ -473,11 +474,11 @@ export function DashboardEditContent({ dashboardId, user }: DashboardEditContent
 
   if (error || !dashboard) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className={`${embedded ? 'flex-1' : 'min-h-screen'} bg-gray-50 flex items-center justify-center`}>
         <div className="text-center">
           <p className="text-danger-600 mb-4">{error || 'Dashboard not found'}</p>
-          <Link href="/dashboards" className="text-primary-600 hover:underline">
-            Back to Dashboards
+          <Link href="/workspace" className="text-primary-600 hover:underline">
+            Back to Workspace
           </Link>
         </div>
       </div>
@@ -485,13 +486,13 @@ export function DashboardEditContent({ dashboardId, user }: DashboardEditContent
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 flex flex-col">
+    <div className={`${embedded ? 'flex-1 flex flex-col overflow-hidden' : 'min-h-screen'} bg-gray-100 flex flex-col`}>
       {/* Header */}
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
+      <header className={`bg-white border-b border-gray-200 ${embedded ? '' : 'sticky top-0'} z-10`}>
         <div className="max-w-full mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-14">
             <div className="flex items-center gap-3">
-              <Link href={`/dashboards/${dashboardId}`} className="text-gray-500 hover:text-gray-700">
+              <Link href={`/workspace?view=dashboard&id=${dashboardId}`} className="text-gray-500 hover:text-gray-700">
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
                 </svg>
@@ -545,7 +546,7 @@ export function DashboardEditContent({ dashboardId, user }: DashboardEditContent
                 )}
               </div>
               <Link
-                href={`/dashboards/${dashboardId}`}
+                href={`/workspace?view=dashboard&id=${dashboardId}`}
                 className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900"
               >
                 Cancel

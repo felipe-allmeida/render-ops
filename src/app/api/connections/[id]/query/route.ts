@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import prisma from '@/lib/db';
-import { query } from '@/lib/pg-client';
+import { getAdapter } from '@/lib/database';
 import { z } from 'zod';
+import { ensureTenant, requireTenantPermission } from '@/lib/tenant';
 
 const querySchema = z.object({
   sql: z.string().min(1),
@@ -24,11 +25,20 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     const { id } = await params;
 
+    // Get user's tenant
+    const tenant = await ensureTenant(session.user.id, session.user.name);
+
+    // Check read permission (queries require at least read)
+    const permission = await requireTenantPermission(session.user.id, tenant.tenantId, 'read');
+    if (!permission.allowed) {
+      return NextResponse.json({ error: permission.error }, { status: 403 });
+    }
+
     // Get connection
     const connection = await prisma.connection.findFirst({
       where: {
         id,
-        userId: session.user.id,
+        tenantId: tenant.tenantId,
       },
     });
 
@@ -48,13 +58,14 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     const { sql, params: queryParams } = validation.data;
 
-    // Execute query
-    const result = await query(connection.connectionString, sql, queryParams || []);
+    // Execute query using adapter
+    const adapter = getAdapter(connection.connectionString);
+    const result = await adapter.query(sql, queryParams || []);
 
     return NextResponse.json({
       success: true,
-      data: result,
-      rowCount: result.length,
+      data: result.rows,
+      rowCount: result.rowCount,
     });
   } catch (error) {
     console.error('Error executing query:', error);

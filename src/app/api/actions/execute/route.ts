@@ -4,6 +4,7 @@ import prisma from '@/lib/db';
 import { Prisma } from '@prisma/client';
 import { actionHandlers, isValidAction, ActionParams } from '@/lib/actions';
 import { z } from 'zod';
+import { ensureTenant } from '@/lib/tenant';
 
 // Rate limiting store (in-memory, would use Redis in production)
 const rateLimitStore = new Map<string, { count: number; resetAt: number }>();
@@ -40,6 +41,7 @@ const executeActionSchema = z.object({
 // POST /api/actions/execute - Execute an action
 export async function POST(request: NextRequest) {
   let userId = 'anonymous';
+  let tenantId: string | undefined;
   let actionName = 'unknown';
   let logParams: Record<string, unknown> | null = null;
   let success = false;
@@ -91,6 +93,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Get user's tenant
+    const tenant = await ensureTenant(session.user.id, session.user.name);
+    tenantId = tenant.tenantId;
+
     // Get connection string if connectionId is provided
     let connectionString: string | undefined;
     const actionParams = params as ActionParams;
@@ -99,7 +105,7 @@ export async function POST(request: NextRequest) {
       const connection = await prisma.connection.findFirst({
         where: {
           id: actionParams.connectionId,
-          userId: session.user.id,
+          tenantId: tenant.tenantId,
         },
       });
 
@@ -148,6 +154,7 @@ export async function POST(request: NextRequest) {
       await prisma.auditLog.create({
         data: {
           userId,
+          tenantId,
           actionName,
           params: (logParams ?? {}) as Prisma.InputJsonValue,
           success,

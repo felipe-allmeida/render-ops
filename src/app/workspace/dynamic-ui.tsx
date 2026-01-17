@@ -205,6 +205,7 @@ function DynamicUIContent({
       },
 
       db_get: async (params: Record<string, unknown>) => {
+        console.log('[db_get] frontend params:', params);
         const response = await fetch('/api/actions/execute', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -214,11 +215,14 @@ function DynamicUIContent({
           }),
         });
         const result = await response.json();
+        console.log('[db_get] API result:', result);
         if (result.success) {
           setMultiple({
             '/form': result.data,
             '/ui/showEditModal': true,
           });
+        } else {
+          console.error('[db_get] API error:', result.error);
         }
         return result.data;
       },

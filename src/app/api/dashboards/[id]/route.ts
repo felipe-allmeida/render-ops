@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import prisma from '@/lib/db';
 import { z } from 'zod';
+import { ensureTenant, requireTenantPermission } from '@/lib/tenant';
 
 // Schema for updating a dashboard
 const updateDashboardSchema = z.object({
@@ -26,6 +27,7 @@ const updateDashboardSchema = z.object({
       aggregation: z.enum(['count', 'sum', 'avg', 'min', 'max']).optional(),
       field: z.string().optional(),
       groupBy: z.string().optional(),
+      datePeriod: z.enum(['day', 'week', 'month', 'year']).optional(),
       chartType: z.enum(['bar', 'line', 'pie', 'area']).optional(),
       xAxis: z.string().optional(),
       yAxis: z.string().optional(),
@@ -50,10 +52,19 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     const { id } = await params;
 
+    // Get user's tenant
+    const tenant = await ensureTenant(session.user.id, session.user.name);
+
+    // Check read permission
+    const permission = await requireTenantPermission(session.user.id, tenant.tenantId, 'read');
+    if (!permission.allowed) {
+      return NextResponse.json({ error: permission.error }, { status: 403 });
+    }
+
     const dashboard = await prisma.dashboard.findFirst({
       where: {
         id,
-        userId: session.user.id,
+        tenantId: tenant.tenantId,
       },
       include: {
         connections: {
@@ -73,6 +84,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       layout: dashboard.layout,
       widgets: dashboard.widgets,
       connectionIds: dashboard.connections.map((c) => c.connectionId),
+      createdBy: dashboard.createdBy,
       createdAt: dashboard.createdAt,
       updatedAt: dashboard.updatedAt,
     });
@@ -93,11 +105,20 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
     const { id } = await params;
 
-    // Check if dashboard exists and belongs to user
+    // Get user's tenant
+    const tenant = await ensureTenant(session.user.id, session.user.name);
+
+    // Check update permission
+    const permission = await requireTenantPermission(session.user.id, tenant.tenantId, 'update');
+    if (!permission.allowed) {
+      return NextResponse.json({ error: permission.error }, { status: 403 });
+    }
+
+    // Check if dashboard exists and belongs to tenant
     const existingDashboard = await prisma.dashboard.findFirst({
       where: {
         id,
-        userId: session.user.id,
+        tenantId: tenant.tenantId,
       },
     });
 
@@ -117,17 +138,17 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
     const { name, description, layout, widgets, connectionIds } = validation.data;
 
-    // Verify user has access to all specified connections
+    // Verify tenant has access to all specified connections
     if (connectionIds && connectionIds.length > 0) {
-      const userConnections = await prisma.connection.findMany({
+      const tenantConnections = await prisma.connection.findMany({
         where: {
           id: { in: connectionIds },
-          userId: session.user.id,
+          tenantId: tenant.tenantId,
         },
         select: { id: true },
       });
 
-      const validConnectionIds = userConnections.map((c) => c.id);
+      const validConnectionIds = tenantConnections.map((c) => c.id);
       const invalidIds = connectionIds.filter((cid) => !validConnectionIds.includes(cid));
 
       if (invalidIds.length > 0) {
@@ -211,11 +232,20 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
 
     const { id } = await params;
 
-    // Check if dashboard exists and belongs to user
+    // Get user's tenant
+    const tenant = await ensureTenant(session.user.id, session.user.name);
+
+    // Check delete permission
+    const permission = await requireTenantPermission(session.user.id, tenant.tenantId, 'delete');
+    if (!permission.allowed) {
+      return NextResponse.json({ error: permission.error }, { status: 403 });
+    }
+
+    // Check if dashboard exists and belongs to tenant
     const dashboard = await prisma.dashboard.findFirst({
       where: {
         id,
-        userId: session.user.id,
+        tenantId: tenant.tenantId,
       },
     });
 

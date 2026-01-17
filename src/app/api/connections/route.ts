@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import prisma from '@/lib/db';
 import { z } from 'zod';
-import { getPool } from '@/lib/pg-client';
+import { createAdapter, getDatabaseType, DatabaseType } from '@/lib/database';
+import { ensureTenant, requireTenantPermission } from '@/lib/tenant';
 
 // Support both connectionString OR individual fields
 const createConnectionSchema = z.object({
@@ -16,7 +17,7 @@ const createConnectionSchema = z.object({
   username: z.string().optional(),
   password: z.string().optional(),
   ssl: z.boolean().optional(),
-  dbType: z.string().optional(),
+  dbType: z.enum(['postgresql', 'mysql', 'mongodb', 'sqlserver']).optional(),
   // Access mode
   readonly: z.boolean().optional(),
 }).refine(
@@ -32,13 +33,35 @@ function buildConnectionString(data: {
   username?: string;
   password?: string;
   ssl?: boolean;
+  dbType?: string;
 }): string {
-  const { host, port = '5432', database, username, password, ssl } = data;
-  const sslParam = ssl ? '?sslmode=require' : '';
-  return `postgresql://${username}:${encodeURIComponent(password || '')}@${host}:${port}/${database}${sslParam}`;
+  const { host, port, database, username, password, ssl, dbType = 'postgresql' } = data;
+
+  const defaultPorts: Record<string, string> = {
+    postgresql: '5432',
+    mysql: '3306',
+    mongodb: '27017',
+    sqlserver: '1433',
+  };
+
+  const actualPort = port || defaultPorts[dbType] || '5432';
+  const encodedPassword = encodeURIComponent(password || '');
+
+  switch (dbType) {
+    case 'mysql':
+      return `mysql://${username}:${encodedPassword}@${host}:${actualPort}/${database}`;
+    case 'mongodb':
+      return `mongodb://${username}:${encodedPassword}@${host}:${actualPort}/${database}`;
+    case 'sqlserver':
+      return `mssql://${username}:${encodedPassword}@${host}:${actualPort}/${database}`;
+    case 'postgresql':
+    default:
+      const sslParam = ssl ? '?sslmode=require' : '';
+      return `postgresql://${username}:${encodedPassword}@${host}:${actualPort}/${database}${sslParam}`;
+  }
 }
 
-// GET /api/connections - List user's connections
+// GET /api/connections - List tenant's connections
 export async function GET() {
   try {
     const session = await auth();
@@ -47,12 +70,23 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    // Get user's tenant (auto-create if needed)
+    const tenant = await ensureTenant(session.user.id, session.user.name);
+
+    // Check read permission
+    const permission = await requireTenantPermission(session.user.id, tenant.tenantId, 'read');
+    if (!permission.allowed) {
+      return NextResponse.json({ error: permission.error }, { status: 403 });
+    }
+
     const connections = await prisma.connection.findMany({
-      where: { userId: session.user.id },
+      where: { tenantId: tenant.tenantId },
       select: {
         id: true,
         name: true,
+        dbType: true,
         readonly: true,
+        createdBy: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -75,6 +109,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    // Get user's tenant (auto-create if needed)
+    const tenant = await ensureTenant(session.user.id, session.user.name);
+
+    // Check create permission
+    const permission = await requireTenantPermission(session.user.id, tenant.tenantId, 'create');
+    if (!permission.allowed) {
+      return NextResponse.json({ error: permission.error }, { status: 403 });
+    }
+
     const body = await request.json();
     const validation = createConnectionSchema.safeParse(body);
 
@@ -85,17 +128,29 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { name, connectionString: directConnectionString, host, port, database, username, password, ssl, readonly } = validation.data;
+    const { name, connectionString: directConnectionString, host, port, database, username, password, ssl, dbType, readonly } = validation.data;
 
     // Build connection string from fields if not provided directly
-    const connectionString = directConnectionString || buildConnectionString({ host, port, database, username, password, ssl });
+    const connectionString = directConnectionString || buildConnectionString({ host, port, database, username, password, ssl, dbType });
+
+    // Detect database type from connection string
+    const detectedDbType: DatabaseType = getDatabaseType(connectionString);
 
     // Test the connection before saving
     try {
-      const pool = getPool(connectionString);
-      const client = await pool.connect();
-      await client.query('SELECT 1');
-      client.release();
+      const adapter = createAdapter(connectionString);
+      const result = await adapter.testConnection();
+      await adapter.disconnect();
+
+      if (!result.success) {
+        return NextResponse.json(
+          {
+            error: 'Failed to connect to database',
+            details: result.error || 'Unknown error',
+          },
+          { status: 400 }
+        );
+      }
     } catch (dbError) {
       return NextResponse.json(
         {
@@ -110,13 +165,17 @@ export async function POST(request: NextRequest) {
       data: {
         name,
         connectionString,
-        userId: session.user.id,
+        dbType: detectedDbType,
+        tenantId: tenant.tenantId,
+        createdBy: session.user.id,
         readonly: readonly ?? false,
       },
       select: {
         id: true,
         name: true,
+        dbType: true,
         readonly: true,
+        createdBy: true,
         createdAt: true,
       },
     });

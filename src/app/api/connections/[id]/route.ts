@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import prisma from '@/lib/db';
-import { closePool } from '@/lib/pg-client';
+import { closeAdapter } from '@/lib/database';
+import { ensureTenant, requireTenantPermission } from '@/lib/tenant';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -17,14 +18,26 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    // Get user's tenant
+    const tenant = await ensureTenant(session.user.id, session.user.name);
+
+    // Check read permission
+    const permission = await requireTenantPermission(session.user.id, tenant.tenantId, 'read');
+    if (!permission.allowed) {
+      return NextResponse.json({ error: permission.error }, { status: 403 });
+    }
+
     const connection = await prisma.connection.findFirst({
       where: {
         id,
-        userId: session.user.id,
+        tenantId: tenant.tenantId,
       },
       select: {
         id: true,
         name: true,
+        dbType: true,
+        readonly: true,
+        createdBy: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -51,10 +64,19 @@ export async function DELETE(_request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    // Get user's tenant
+    const tenant = await ensureTenant(session.user.id, session.user.name);
+
+    // Check delete permission
+    const permission = await requireTenantPermission(session.user.id, tenant.tenantId, 'delete');
+    if (!permission.allowed) {
+      return NextResponse.json({ error: permission.error }, { status: 403 });
+    }
+
     const connection = await prisma.connection.findFirst({
       where: {
         id,
-        userId: session.user.id,
+        tenantId: tenant.tenantId,
       },
     });
 
@@ -62,8 +84,8 @@ export async function DELETE(_request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Connection not found' }, { status: 404 });
     }
 
-    // Close the connection pool
-    await closePool(connection.connectionString);
+    // Close the adapter connection
+    await closeAdapter(connection.connectionString);
 
     // Delete the connection
     await prisma.connection.delete({

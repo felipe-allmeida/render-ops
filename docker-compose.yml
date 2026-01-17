@@ -17,6 +17,86 @@ services:
       timeout: 5s
       retries: 5
 
+  postgres-ecommerce:
+    image: postgres:16-alpine
+    container_name: renderops-ecommerce-db
+    environment:
+      POSTGRES_USER: ecommerce
+      POSTGRES_PASSWORD: ecommerce123
+      POSTGRES_DB: ecommerce_demo
+    ports:
+      - "5433:5432"
+    volumes:
+      - ecommerce_data:/var/lib/postgresql/data
+      - ./docker/postgres-ecommerce/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+      - ./docker/postgres-ecommerce/seed.sql:/docker-entrypoint-initdb.d/02-seed.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ecommerce"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # SQL Server for ecommerce demo
+  sqlserver-ecommerce:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: renderops-sqlserver-ecommerce
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "EcommercePass123!"
+      MSSQL_PID: "Developer"
+    ports:
+      - "1433:1433"
+    volumes:
+      - sqlserver_ecommerce_data:/var/opt/mssql
+    healthcheck:
+      test: /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "EcommercePass123!" -C -Q "SELECT 1" || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+
+  # MySQL for ecommerce demo
+  mysql-ecommerce:
+    image: mysql:8.0
+    container_name: renderops-mysql-ecommerce
+    environment:
+      MYSQL_ROOT_PASSWORD: root123
+      MYSQL_DATABASE: ecommerce_demo
+      MYSQL_USER: ecommerce
+      MYSQL_PASSWORD: ecommerce123
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_ecommerce_data:/var/lib/mysql
+      - ./docker/mysql-ecommerce/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+    command: --default-authentication-plugin=mysql_native_password
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot123"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # MongoDB for ecommerce demo
+  mongodb-ecommerce:
+    image: mongo:7.0
+    container_name: renderops-mongodb-ecommerce
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: admin123
+      MONGO_INITDB_DATABASE: ecommerce_demo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_ecommerce_data:/data/db
+      - ./docker/mongodb-ecommerce/init.js:/docker-entrypoint-initdb.d/init.js:ro
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
   keycloak:
     image: quay.io/keycloak/keycloak:23.0
     container_name: renderops-keycloak
@@ -40,3 +120,7 @@ services:
 
 volumes:
   postgres_data:
+  ecommerce_data:
+  sqlserver_ecommerce_data:
+  mysql_ecommerce_data:
+  mongodb_ecommerce_data:

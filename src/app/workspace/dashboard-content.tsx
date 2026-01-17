@@ -6,6 +6,9 @@ import { signOut } from 'next-auth/react';
 import Link from 'next/link';
 import { DynamicUI } from './dynamic-ui';
 import { Widget, WidgetRenderer } from '@/lib/dashboard-components';
+import { DashboardEditContent } from '@/app/dashboards/[id]/edit/dashboard-edit-content';
+import { NewDashboardContent } from '@/app/dashboards/new/new-dashboard-content';
+import { TenantSettings } from './tenant-settings';
 
 interface User {
   id: string;
@@ -121,10 +124,10 @@ const Icons = {
 
 // Database types available
 const DATABASE_TYPES = [
-  { id: 'postgresql', name: 'PostgreSQL', available: true, icon: '🐘' },
-  { id: 'mysql', name: 'MySQL', available: false, icon: '🐬' },
-  { id: 'mongodb', name: 'MongoDB', available: false, icon: '🍃' },
-  { id: 'sqlserver', name: 'SQL Server', available: false, icon: '🗄️' },
+  { id: 'postgresql', name: 'PostgreSQL', available: true, icon: '🐘', defaultPort: '5432' },
+  { id: 'mysql', name: 'MySQL', available: true, icon: '🐬', defaultPort: '3306' },
+  { id: 'mongodb', name: 'MongoDB', available: true, icon: '🍃', defaultPort: '27017' },
+  { id: 'sqlserver', name: 'SQL Server', available: true, icon: '🗄️', defaultPort: '1433' },
 ];
 
 export function DashboardContent({ user }: DashboardContentProps) {
@@ -132,9 +135,11 @@ export function DashboardContent({ user }: DashboardContentProps) {
   const searchParams = useSearchParams();
 
   // Get current view from URL
-  const currentView = searchParams.get('view'); // 'table' | 'dashboard' | 'settings' | null
+  const currentView = searchParams.get('view'); // 'table' | 'dashboard' | 'dashboard-edit' | 'dashboard-new' | 'settings' | null
   const selectedTable = currentView === 'table' ? searchParams.get('name') : null;
   const selectedDashboard = currentView === 'dashboard' ? searchParams.get('id') : null;
+  const editingDashboard = currentView === 'dashboard-edit' ? searchParams.get('id') : null;
+  const creatingDashboard = currentView === 'dashboard-new';
   const showSettings = currentView === 'settings';
 
   const [integrations, setIntegrations] = useState<Integration[]>([]);
@@ -145,6 +150,8 @@ export function DashboardContent({ user }: DashboardContentProps) {
   const [isLoadingTables, setIsLoadingTables] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showIntegrationModal, setShowIntegrationModal] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<'overview' | 'integrations' | 'team'>('overview');
+  const [settingsMenuOpen, setSettingsMenuOpen] = useState(false);
 
   // Navigation helpers
   const navigateTo = useCallback((view: string | null, params?: Record<string, string>) => {
@@ -173,6 +180,7 @@ export function DashboardContent({ user }: DashboardContentProps) {
   const navigateToSettings = useCallback(() => {
     navigateTo('settings');
     setSidebarOpen(false);
+    setSettingsMenuOpen(true);
   }, [navigateTo]);
 
   // Integration form state
@@ -436,7 +444,12 @@ export function DashboardContent({ user }: DashboardContentProps) {
               {DATABASE_TYPES.map((db) => (
                 <button
                   key={db.id}
-                  onClick={() => db.available && setShowIntegrationModal(true)}
+                  onClick={() => {
+                    if (db.available) {
+                      setFormData(prev => ({ ...prev, dbType: db.id, port: db.defaultPort }));
+                      setShowIntegrationModal(true);
+                    }
+                  }}
                   disabled={!db.available}
                   className={`p-4 rounded-xl border-2 transition-all ${
                     db.available
@@ -454,11 +467,14 @@ export function DashboardContent({ user }: DashboardContentProps) {
             </div>
 
             <button
-              onClick={() => setShowIntegrationModal(true)}
+              onClick={() => {
+                setFormData(prev => ({ ...prev, dbType: 'postgresql', port: '5432' }));
+                setShowIntegrationModal(true);
+              }}
               className="w-full sm:w-auto mx-auto flex items-center justify-center gap-2 px-8 py-3 bg-primary-600 text-white rounded-xl font-medium hover:bg-primary-700 transition-colors"
             >
               {Icons.plus}
-              <span>Connect PostgreSQL Database</span>
+              <span>Connect Database</span>
             </button>
           </div>
         </main>
@@ -551,7 +567,7 @@ export function DashboardContent({ user }: DashboardContentProps) {
                     <div className="text-gray-400 mb-2">{Icons.chart}</div>
                     <p className="text-xs text-gray-500 mb-2">No dashboards yet</p>
                     <Link
-                      href="/dashboards/new"
+                      href="/workspace?view=dashboard-new"
                       className="inline-flex items-center gap-1 text-xs font-medium text-primary-600 hover:text-primary-700"
                     >
                       {Icons.plus}
@@ -576,7 +592,7 @@ export function DashboardContent({ user }: DashboardContentProps) {
                     </button>
                   ))}
                   <Link
-                    href="/dashboards/new"
+                    href="/workspace?view=dashboard-new"
                     className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-primary-600 hover:bg-primary-50 transition-colors"
                   >
                     <span>{Icons.plus}</span>
@@ -657,17 +673,84 @@ export function DashboardContent({ user }: DashboardContentProps) {
 
           {/* Bottom Section */}
           <div className="flex-shrink-0 border-t border-gray-100 p-3 space-y-1">
-            <button
-              onClick={navigateToSettings}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors ${
-                showSettings
-                  ? 'bg-gray-100 text-gray-900 font-medium'
-                  : 'text-gray-600 hover:bg-gray-50'
-              }`}
-            >
-              <span className="text-gray-400">{Icons.settings}</span>
-              <span>Integrations</span>
-            </button>
+            {/* Settings with submenu */}
+            <div>
+              <button
+                onClick={() => setSettingsMenuOpen(!settingsMenuOpen)}
+                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm transition-colors ${
+                  showSettings
+                    ? 'bg-gray-100 text-gray-900 font-medium'
+                    : 'text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-gray-400">{Icons.settings}</span>
+                  <span>Settings</span>
+                </div>
+                <svg
+                  className={`w-4 h-4 text-gray-400 transition-transform ${settingsMenuOpen ? 'rotate-180' : ''}`}
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+
+              {/* Submenus */}
+              {settingsMenuOpen && (
+                <div className="mt-1 ml-4 space-y-1">
+                  <button
+                    onClick={() => {
+                      setSettingsTab('overview');
+                      navigateToSettings();
+                    }}
+                    className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
+                      showSettings && settingsTab === 'overview'
+                        ? 'bg-primary-50 text-primary-700 font-medium'
+                        : 'text-gray-600 hover:bg-gray-50'
+                    }`}
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0l-1 3m8.5-3l1 3m0 0l.5 1.5m-.5-1.5h-9.5m0 0l-.5 1.5" />
+                    </svg>
+                    <span>Overview</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setSettingsTab('integrations');
+                      navigateToSettings();
+                    }}
+                    className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
+                      showSettings && settingsTab === 'integrations'
+                        ? 'bg-primary-50 text-primary-700 font-medium'
+                        : 'text-gray-600 hover:bg-gray-50'
+                    }`}
+                  >
+                    <span className="text-gray-400">{Icons.database}</span>
+                    <span>Integrations</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setSettingsTab('team');
+                      navigateToSettings();
+                    }}
+                    className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
+                      showSettings && settingsTab === 'team'
+                        ? 'bg-primary-50 text-primary-700 font-medium'
+                        : 'text-gray-600 hover:bg-gray-50'
+                    }`}
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
+                    </svg>
+                    <span>Team</span>
+                  </button>
+                </div>
+              )}
+            </div>
+
             <button
               onClick={() => signOut({ callbackUrl: '/' })}
               className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition-colors"
@@ -708,7 +791,7 @@ export function DashboardContent({ user }: DashboardContentProps) {
             </button>
             <span className="font-semibold text-gray-900 truncate max-w-[200px]">
               {showSettings
-                ? 'Integrations'
+                ? 'Settings'
                 : selectedTable
                 ? formatTableName(selectedTable)
                 : selectedDashboard
@@ -722,83 +805,156 @@ export function DashboardContent({ user }: DashboardContentProps) {
         {/* Page Content */}
         <main className="flex-1 md:min-h-0 flex flex-col overflow-y-auto md:overflow-hidden">
           {showSettings ? (
-            /* Settings / Integrations Page */
+            /* Settings Page with Tabs */
             <div className="flex-1 overflow-auto max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
-              <div className="flex items-center justify-between mb-6">
-                <div>
-                  <h1 className="text-2xl font-bold text-gray-900">Integrations</h1>
-                  <p className="text-gray-600 mt-1">Manage your database connections</p>
-                </div>
+              {/* Settings Header */}
+              <div className="mb-6">
+                <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
+                <p className="text-gray-600 mt-1">Manage your workspace and integrations</p>
+              </div>
+
+              {/* Settings Tabs */}
+              <div className="flex gap-1 p-1 bg-gray-100 rounded-lg mb-6 w-fit">
                 <button
-                  onClick={() => setShowIntegrationModal(true)}
-                  className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 transition-colors"
+                  onClick={() => setSettingsTab('overview')}
+                  className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-all ${
+                    settingsTab === 'overview'
+                      ? 'bg-white text-gray-900 shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
                 >
-                  {Icons.plus}
-                  <span className="hidden sm:inline">Add Integration</span>
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0l-1 3m8.5-3l1 3m0 0l.5 1.5m-.5-1.5h-9.5m0 0l-.5 1.5" />
+                  </svg>
+                  Overview
+                </button>
+                <button
+                  onClick={() => setSettingsTab('integrations')}
+                  className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-all ${
+                    settingsTab === 'integrations'
+                      ? 'bg-white text-gray-900 shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  {Icons.database}
+                  Integrations
+                </button>
+                <button
+                  onClick={() => setSettingsTab('team')}
+                  className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-all ${
+                    settingsTab === 'team'
+                      ? 'bg-white text-gray-900 shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
+                  </svg>
+                  Team
                 </button>
               </div>
 
-              <div className="space-y-4">
-                {integrations.map((integration) => (
-                  <div
-                    key={integration.id}
-                    className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 bg-primary-100 rounded-xl flex items-center justify-center text-2xl">
-                          🐘
-                        </div>
-                        <div>
-                          <h3 className="font-semibold text-gray-900">{integration.name}</h3>
-                          <p className="text-sm text-gray-500">
-                            PostgreSQL • Connected{' '}
-                            {new Date(integration.createdAt).toLocaleDateString()}
-                          </p>
+              {/* Overview Tab Content */}
+              {settingsTab === 'overview' && (
+                <WorkspaceOverview
+                  integrationsCount={integrations.length}
+                  dashboardsCount={dashboards.length}
+                />
+              )}
+
+              {/* Integrations Tab Content */}
+              {settingsTab === 'integrations' && (
+                <>
+                  <div className="flex items-center justify-between mb-6">
+                    <div>
+                      <h2 className="text-lg font-semibold text-gray-900">Database Connections</h2>
+                      <p className="text-gray-600 text-sm">Manage your connected databases</p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setFormData(prev => ({ ...prev, dbType: 'postgresql', port: '5432' }));
+                        setShowIntegrationModal(true);
+                      }}
+                      className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 transition-colors"
+                    >
+                      {Icons.plus}
+                      <span className="hidden sm:inline">Add Integration</span>
+                    </button>
+                  </div>
+
+                  <div className="space-y-4">
+                    {integrations.map((integration) => (
+                      <div
+                        key={integration.id}
+                        className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-4">
+                            <div className="w-12 h-12 bg-primary-100 rounded-xl flex items-center justify-center text-2xl">
+                              🐘
+                            </div>
+                            <div>
+                              <h3 className="font-semibold text-gray-900">{integration.name}</h3>
+                              <p className="text-sm text-gray-500">
+                                PostgreSQL • Connected{' '}
+                                {new Date(integration.createdAt).toLocaleDateString()}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="hidden sm:flex items-center gap-1.5 text-sm text-success-600 bg-success-50 px-3 py-1 rounded-full">
+                              {Icons.check}
+                              Active
+                            </span>
+                            <button
+                              onClick={() => handleDeleteIntegration(integration.id)}
+                              className="p-2 text-gray-400 hover:text-danger-600 hover:bg-danger-50 rounded-lg transition-colors"
+                              title="Remove integration"
+                            >
+                              {Icons.x}
+                            </button>
+                          </div>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <span className="hidden sm:flex items-center gap-1.5 text-sm text-success-600 bg-success-50 px-3 py-1 rounded-full">
-                          {Icons.check}
-                          Active
-                        </span>
+                    ))}
+                  </div>
+
+                  {/* Add More Databases */}
+                  <div className="mt-8 pt-8 border-t border-gray-200">
+                    <h2 className="text-lg font-semibold text-gray-900 mb-4">
+                      Add New Connection
+                    </h2>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                      {DATABASE_TYPES.map((db) => (
                         <button
-                          onClick={() => handleDeleteIntegration(integration.id)}
-                          className="p-2 text-gray-400 hover:text-danger-600 hover:bg-danger-50 rounded-lg transition-colors"
-                          title="Remove integration"
+                          key={db.id}
+                          onClick={() => {
+                            setFormData(prev => ({ ...prev, dbType: db.id, port: db.defaultPort }));
+                            setShowIntegrationModal(true);
+                          }}
+                          className={`p-4 rounded-xl border-2 text-left transition-all ${
+                            db.available
+                              ? 'border-primary-200 bg-primary-50 hover:border-primary-400 hover:shadow-md cursor-pointer'
+                              : 'border-gray-100 bg-gray-50 opacity-60 cursor-not-allowed'
+                          }`}
+                          disabled={!db.available}
                         >
-                          {Icons.x}
+                          <div className="text-2xl mb-2">{db.icon}</div>
+                          <div className="text-sm font-medium text-gray-900">{db.name}</div>
+                          <div className="text-xs text-gray-500 mt-1">
+                            {db.available ? 'Click to connect' : 'Coming soon'}
+                          </div>
                         </button>
-                      </div>
+                      ))}
                     </div>
                   </div>
-                ))}
-              </div>
+                </>
+              )}
 
-              {/* Add More Databases */}
-              <div className="mt-8 pt-8 border-t border-gray-200">
-                <h2 className="text-lg font-semibold text-gray-900 mb-4">
-                  Supported Databases
-                </h2>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  {DATABASE_TYPES.map((db) => (
-                    <div
-                      key={db.id}
-                      className={`p-4 rounded-xl border ${
-                        db.available
-                          ? 'border-primary-200 bg-primary-50'
-                          : 'border-gray-100 bg-gray-50 opacity-60'
-                      }`}
-                    >
-                      <div className="text-2xl mb-2">{db.icon}</div>
-                      <div className="text-sm font-medium text-gray-900">{db.name}</div>
-                      <div className="text-xs text-gray-500 mt-1">
-                        {db.available ? 'Available' : 'Coming soon'}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              {/* Team Tab Content */}
+              {settingsTab === 'team' && (
+                <TenantSettings currentUserId={user.id} />
+              )}
             </div>
           ) : selectedTable && activeIntegration ? (
             /* Table CRUD UI */
@@ -811,7 +967,13 @@ export function DashboardContent({ user }: DashboardContentProps) {
             </div>
           ) : selectedDashboard ? (
             /* Dashboard View */
-            <EmbeddedDashboard dashboardId={selectedDashboard} />
+            <EmbeddedDashboard dashboardId={selectedDashboard} onDelete={fetchDashboards} />
+          ) : editingDashboard ? (
+            /* Dashboard Edit View - Full Editor */
+            <DashboardEditContent dashboardId={editingDashboard} user={user} embedded />
+          ) : creatingDashboard ? (
+            /* New Dashboard View */
+            <NewDashboardContent user={user} embedded />
           ) : (
             /* Welcome State */
             <div className="flex-1 flex items-center justify-center px-4">
@@ -892,7 +1054,7 @@ function IntegrationModal({
 
     try {
       const payload = inputMode === 'string'
-        ? { connectionString: formData.connectionString.trim() }
+        ? { connectionString: formData.connectionString.trim(), dbType: formData.dbType }
         : {
             host: formData.host.trim(),
             port: formData.port.trim(),
@@ -900,6 +1062,7 @@ function IntegrationModal({
             username: formData.username.trim(),
             password: formData.password,
             ssl: formData.ssl,
+            dbType: formData.dbType,
           };
 
       const response = await fetch('/api/connections/test', {
@@ -941,7 +1104,9 @@ function IntegrationModal({
           <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
             <div>
               <h3 className="text-lg font-semibold text-gray-900">Connect Database</h3>
-              <p className="text-sm text-gray-500">Add your PostgreSQL connection details</p>
+              <p className="text-sm text-gray-500">
+                Add your {DATABASE_TYPES.find(d => d.id === formData.dbType)?.name || 'database'} connection details
+              </p>
             </div>
             <button
               onClick={onClose}
@@ -961,6 +1126,30 @@ function IntegrationModal({
                   {formError}
                 </div>
               )}
+
+              {/* Database Type Selection */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Database Type
+                </label>
+                <div className="grid grid-cols-4 gap-2">
+                  {DATABASE_TYPES.map((db) => (
+                    <button
+                      key={db.id}
+                      type="button"
+                      onClick={() => setFormData({ ...formData, dbType: db.id, port: db.defaultPort })}
+                      className={`p-3 rounded-lg border-2 transition-all text-center ${
+                        formData.dbType === db.id
+                          ? 'border-primary-500 bg-primary-50'
+                          : 'border-gray-200 hover:border-gray-300'
+                      }`}
+                    >
+                      <div className="text-xl mb-1">{db.icon}</div>
+                      <div className="text-xs font-medium text-gray-900">{db.name}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
 
               {/* Connection Name - always visible */}
               <div>
@@ -1028,7 +1217,7 @@ function IntegrationModal({
                         type="text"
                         value={formData.port}
                         onChange={(e) => setFormData({ ...formData, port: e.target.value })}
-                        placeholder="5432"
+                        placeholder={DATABASE_TYPES.find(d => d.id === formData.dbType)?.defaultPort || '5432'}
                         className="input-base"
                         required={inputMode === 'fields'}
                       />
@@ -1099,13 +1288,22 @@ function IntegrationModal({
                   <textarea
                     value={formData.connectionString}
                     onChange={(e) => setFormData({ ...formData, connectionString: e.target.value })}
-                    placeholder="postgresql://user:password@host:5432/database"
+                    placeholder={
+                      formData.dbType === 'postgresql' ? 'postgresql://user:password@host:5432/database' :
+                      formData.dbType === 'mysql' ? 'mysql://user:password@host:3306/database' :
+                      formData.dbType === 'mongodb' ? 'mongodb://user:password@host:27017/database' :
+                      formData.dbType === 'sqlserver' ? 'mssql://user:password@host:1433/database' :
+                      'postgresql://user:password@host:5432/database'
+                    }
                     className="input-base font-mono text-sm"
                     rows={3}
                     required={inputMode === 'string'}
                   />
                   <p className="mt-1.5 text-xs text-gray-500">
-                    Format: postgresql://user:password@host:port/database
+                    {formData.dbType === 'postgresql' && 'Format: postgresql://user:password@host:port/database'}
+                    {formData.dbType === 'mysql' && 'Format: mysql://user:password@host:port/database'}
+                    {formData.dbType === 'mongodb' && 'Format: mongodb://user:password@host:port/database'}
+                    {formData.dbType === 'sqlserver' && 'Format: mssql://user:password@host:port/database'}
                   </p>
                 </div>
               )}
@@ -1220,12 +1418,39 @@ function IntegrationModal({
 }
 
 // Embedded Dashboard Component - for displaying dashboards within the workspace
-function EmbeddedDashboard({ dashboardId }: { dashboardId: string }) {
+function EmbeddedDashboard({ dashboardId, onDelete }: { dashboardId: string; onDelete?: () => void }) {
+  const router = useRouter();
   const [dashboard, setDashboard] = useState<DashboardFull | null>(null);
   const [widgetData, setWidgetData] = useState<Record<string, unknown>>({});
   const [widgetLoading, setWidgetLoading] = useState<Record<string, boolean>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleDeleteDashboard = async () => {
+    if (!confirm('Are you sure you want to delete this dashboard? This action cannot be undone.')) {
+      return;
+    }
+
+    setIsDeleting(true);
+    try {
+      const response = await fetch(`/api/dashboards/${dashboardId}`, {
+        method: 'DELETE',
+      });
+
+      if (response.ok) {
+        onDelete?.();
+        router.push('/workspace');
+      } else {
+        throw new Error('Failed to delete dashboard');
+      }
+    } catch (err) {
+      console.error('Failed to delete dashboard:', err);
+      alert('Failed to delete dashboard. Please try again.');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   const fetchWidgetData = useCallback(async (widget: Widget) => {
     if (!widget.config?.connectionId) return;
@@ -1354,7 +1579,7 @@ function EmbeddedDashboard({ dashboardId }: { dashboardId: string }) {
             </svg>
           </button>
           <Link
-            href={`/dashboards/${dashboardId}/edit`}
+            href={`/workspace?view=dashboard-edit&id=${dashboardId}`}
             className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -1362,6 +1587,17 @@ function EmbeddedDashboard({ dashboardId }: { dashboardId: string }) {
             </svg>
             <span className="hidden sm:inline">Edit</span>
           </Link>
+          <button
+            onClick={handleDeleteDashboard}
+            disabled={isDeleting}
+            className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-danger-600 hover:bg-danger-50 rounded-lg disabled:opacity-50"
+            title="Delete dashboard"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+            <span className="hidden sm:inline">{isDeleting ? 'Deleting...' : 'Delete'}</span>
+          </button>
         </div>
       </div>
 
@@ -1376,7 +1612,7 @@ function EmbeddedDashboard({ dashboardId }: { dashboardId: string }) {
           <h3 className="text-lg font-medium text-gray-900 mb-1">No widgets yet</h3>
           <p className="text-gray-500 mb-4">Add widgets to visualize your data</p>
           <Link
-            href={`/dashboards/${dashboardId}/edit`}
+            href={`/workspace?view=dashboard-edit&id=${dashboardId}`}
             className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700"
           >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -1411,6 +1647,149 @@ function EmbeddedDashboard({ dashboardId }: { dashboardId: string }) {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// Workspace Overview Component
+function WorkspaceOverview({
+  integrationsCount,
+  dashboardsCount,
+}: {
+  integrationsCount: number;
+  dashboardsCount: number;
+}) {
+  const [tenantInfo, setTenantInfo] = useState<{
+    name: string;
+    slug: string;
+    role: string;
+    membersCount: number;
+    createdAt: string;
+  } | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchTenantInfo = async () => {
+      try {
+        const response = await fetch('/api/tenants/my');
+        if (response.ok) {
+          const data = await response.json();
+          // Fetch members count
+          const membersResponse = await fetch(`/api/tenants/${data.id}/members`);
+          const members = membersResponse.ok ? await membersResponse.json() : [];
+
+          setTenantInfo({
+            name: data.name,
+            slug: data.slug,
+            role: data.role,
+            membersCount: members.length,
+            createdAt: data.createdAt,
+          });
+        }
+      } catch (error) {
+        console.error('Failed to fetch tenant info:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchTenantInfo();
+  }, []);
+
+  if (isLoading) {
+    return (
+      <div className="space-y-4">
+        <div className="h-32 skeleton rounded-xl" />
+        <div className="grid grid-cols-3 gap-4">
+          <div className="h-24 skeleton rounded-xl" />
+          <div className="h-24 skeleton rounded-xl" />
+          <div className="h-24 skeleton rounded-xl" />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Workspace Info Card */}
+      <div className="bg-white rounded-xl border border-gray-200 p-6">
+        <div className="flex items-start justify-between">
+          <div>
+            <h2 className="text-xl font-semibold text-gray-900">
+              {tenantInfo?.name || 'My Workspace'}
+            </h2>
+            <p className="text-sm text-gray-500 mt-1">
+              Workspace ID: <code className="bg-gray-100 px-2 py-0.5 rounded text-xs">{tenantInfo?.slug}</code>
+            </p>
+          </div>
+          <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
+            tenantInfo?.role === 'OWNER'
+              ? 'bg-purple-100 text-purple-700'
+              : tenantInfo?.role === 'ADMIN'
+              ? 'bg-blue-100 text-blue-700'
+              : tenantInfo?.role === 'MEMBER'
+              ? 'bg-green-100 text-green-700'
+              : 'bg-gray-100 text-gray-700'
+          }`}>
+            {tenantInfo?.role || 'MEMBER'}
+          </span>
+        </div>
+        {tenantInfo?.createdAt && (
+          <p className="text-sm text-gray-500 mt-4">
+            Created on {new Date(tenantInfo.createdAt).toLocaleDateString('en-US', {
+              year: 'numeric',
+              month: 'long',
+              day: 'numeric',
+            })}
+          </p>
+        )}
+      </div>
+
+      {/* Stats Grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="bg-white rounded-xl border border-gray-200 p-5">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-primary-100 rounded-lg flex items-center justify-center">
+              <svg className="w-5 h-5 text-primary-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
+              </svg>
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-gray-900">{integrationsCount}</p>
+              <p className="text-sm text-gray-500">Integrations</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl border border-gray-200 p-5">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-success-100 rounded-lg flex items-center justify-center">
+              <svg className="w-5 h-5 text-success-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0l-1 3m8.5-3l1 3m0 0l.5 1.5m-.5-1.5h-9.5m0 0l-.5 1.5m.75-9l3-3 2.148 2.148A12.061 12.061 0 0116.5 7.605" />
+              </svg>
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-gray-900">{dashboardsCount}</p>
+              <p className="text-sm text-gray-500">Dashboards</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl border border-gray-200 p-5">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-warning-100 rounded-lg flex items-center justify-center">
+              <svg className="w-5 h-5 text-warning-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
+              </svg>
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-gray-900">{tenantInfo?.membersCount || 1}</p>
+              <p className="text-sm text-gray-500">Team Members</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
     </div>
   );
 }

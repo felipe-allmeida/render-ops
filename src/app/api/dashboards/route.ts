@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import prisma from '@/lib/db';
 import { z } from 'zod';
+import { ensureTenant, requireTenantPermission } from '@/lib/tenant';
 
 // Schema for creating a dashboard
 const createDashboardSchema = z.object({
@@ -26,6 +27,7 @@ const createDashboardSchema = z.object({
       aggregation: z.enum(['count', 'sum', 'avg', 'min', 'max']).optional(),
       field: z.string().optional(),
       groupBy: z.string().optional(),
+      datePeriod: z.enum(['day', 'week', 'month', 'year']).optional(),
       chartType: z.enum(['bar', 'line', 'pie', 'area']).optional(),
       xAxis: z.string().optional(),
       yAxis: z.string().optional(),
@@ -35,7 +37,7 @@ const createDashboardSchema = z.object({
   connectionIds: z.array(z.string()).optional(),
 });
 
-// GET /api/dashboards - List user's dashboards
+// GET /api/dashboards - List tenant's dashboards
 export async function GET() {
   try {
     const session = await auth();
@@ -44,8 +46,17 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    // Get user's tenant (auto-create if needed)
+    const tenant = await ensureTenant(session.user.id, session.user.name);
+
+    // Check read permission
+    const permission = await requireTenantPermission(session.user.id, tenant.tenantId, 'read');
+    if (!permission.allowed) {
+      return NextResponse.json({ error: permission.error }, { status: 403 });
+    }
+
     const dashboards = await prisma.dashboard.findMany({
-      where: { userId: session.user.id },
+      where: { tenantId: tenant.tenantId },
       orderBy: { updatedAt: 'desc' },
       include: {
         connections: {
@@ -64,6 +75,7 @@ export async function GET() {
       layout: dashboard.layout,
       widgets: dashboard.widgets,
       connectionIds: dashboard.connections.map((c) => c.connectionId),
+      createdBy: dashboard.createdBy,
       createdAt: dashboard.createdAt,
       updatedAt: dashboard.updatedAt,
     }));
@@ -84,6 +96,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    // Get user's tenant (auto-create if needed)
+    const tenant = await ensureTenant(session.user.id, session.user.name);
+
+    // Check create permission
+    const permission = await requireTenantPermission(session.user.id, tenant.tenantId, 'create');
+    if (!permission.allowed) {
+      return NextResponse.json({ error: permission.error }, { status: 403 });
+    }
+
     const body = await request.json();
     const validation = createDashboardSchema.safeParse(body);
 
@@ -96,17 +117,17 @@ export async function POST(request: NextRequest) {
 
     const { name, description, layout, widgets, connectionIds } = validation.data;
 
-    // Verify user has access to all specified connections
+    // Verify tenant has access to all specified connections
     if (connectionIds && connectionIds.length > 0) {
-      const userConnections = await prisma.connection.findMany({
+      const tenantConnections = await prisma.connection.findMany({
         where: {
           id: { in: connectionIds },
-          userId: session.user.id,
+          tenantId: tenant.tenantId,
         },
         select: { id: true },
       });
 
-      const validConnectionIds = userConnections.map((c) => c.id);
+      const validConnectionIds = tenantConnections.map((c) => c.id);
       const invalidIds = connectionIds.filter((id) => !validConnectionIds.includes(id));
 
       if (invalidIds.length > 0) {
@@ -122,7 +143,8 @@ export async function POST(request: NextRequest) {
       data: {
         name,
         description,
-        userId: session.user.id,
+        tenantId: tenant.tenantId,
+        createdBy: session.user.id,
         layout: layout || { columns: 12, rowHeight: 80 },
         widgets: widgets || [],
         connections: connectionIds
@@ -147,6 +169,7 @@ export async function POST(request: NextRequest) {
       layout: dashboard.layout,
       widgets: dashboard.widgets,
       connectionIds: dashboard.connections.map((c) => c.connectionId),
+      createdBy: dashboard.createdBy,
       createdAt: dashboard.createdAt,
       updatedAt: dashboard.updatedAt,
     });

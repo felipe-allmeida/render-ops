@@ -1,8 +1,8 @@
-import { query, getClient } from '@/lib/pg-client';
+import { getAdapter } from '@/lib/database';
 import { ActionResult, ActionParams } from './index';
 
 // List of allowed system tables that should never be accessed
-const BLOCKED_TABLES = ['pg_', 'information_schema', 'audit_log'];
+const BLOCKED_TABLES = ['pg_', 'information_schema', 'audit_log', 'system.'];
 
 /**
  * Validate table name for security
@@ -17,13 +17,6 @@ function validateTableName(table: string): boolean {
   // Block system tables
   const lowerTable = table.toLowerCase();
   return !BLOCKED_TABLES.some((blocked) => lowerTable.startsWith(blocked));
-}
-
-/**
- * Sanitize column names to prevent SQL injection
- */
-function sanitizeColumnName(col: string): string {
-  return col.replace(/[^a-zA-Z0-9_]/g, '');
 }
 
 /**
@@ -45,78 +38,21 @@ export async function dbList(
       return { success: false, error: 'Invalid table name' };
     }
 
-    // Build query
-    let sql = `SELECT * FROM "${sanitizeColumnName(table)}"`;
-    const queryParams: unknown[] = [];
-    let paramIndex = 1;
+    // Get adapter for the database type
+    const adapter = getAdapter(connectionString);
 
-    // Add WHERE clause if provided
-    if (where && Object.keys(where).length > 0) {
-      const conditions: string[] = [];
-      for (const [key, value] of Object.entries(where)) {
-        const colName = sanitizeColumnName(key);
-        if (value === null) {
-          conditions.push(`"${colName}" IS NULL`);
-        } else {
-          conditions.push(`"${colName}" = $${paramIndex}`);
-          queryParams.push(value);
-          paramIndex++;
-        }
-      }
-      sql += ` WHERE ${conditions.join(' AND ')}`;
-    }
-
-    // Add ORDER BY
-    if (orderBy) {
-      const colName = sanitizeColumnName(orderBy);
-      const direction = orderDirection === 'desc' ? 'DESC' : 'ASC';
-      sql += ` ORDER BY "${colName}" ${direction}`;
-    }
-
-    // Add pagination
-    const offset = (page - 1) * limit;
-    sql += ` LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
-    queryParams.push(limit, offset);
-
-    const rows = await query(connectionString, sql, queryParams);
-
-    // Get total count
-    let countSql = `SELECT COUNT(*) as total FROM "${sanitizeColumnName(table)}"`;
-    const countParams: unknown[] = [];
-    if (where && Object.keys(where).length > 0) {
-      const conditions: string[] = [];
-      let countParamIndex = 1;
-      for (const [key, value] of Object.entries(where)) {
-        const colName = sanitizeColumnName(key);
-        if (value === null) {
-          conditions.push(`"${colName}" IS NULL`);
-        } else {
-          conditions.push(`"${colName}" = $${countParamIndex}`);
-          countParams.push(value);
-          countParamIndex++;
-        }
-      }
-      countSql += ` WHERE ${conditions.join(' AND ')}`;
-    }
-
-    const countResult = await query<{ total: string }>(
-      connectionString,
-      countSql,
-      countParams
-    );
-    const total = parseInt(countResult[0]?.total ?? '0', 10);
+    // Use the adapter's list method
+    const result = await adapter.list(table, {
+      page,
+      limit,
+      where: where as Record<string, unknown>,
+      orderBy,
+      orderDirection,
+    });
 
     return {
       success: true,
-      data: {
-        items: rows,
-        pagination: {
-          page,
-          limit,
-          total,
-          totalPages: Math.ceil(total / limit),
-        },
-      },
+      data: result,
     };
   } catch (error) {
     console.error('db_list error:', error);
@@ -138,7 +74,10 @@ export async function dbGet(
   try {
     const { table, id } = params;
 
+    console.log('[db_get] params:', { table, id, hasConnectionString: !!connectionString });
+
     if (!table || !id || !connectionString) {
+      console.log('[db_get] Missing params:', { table, id, connectionString: !!connectionString });
       return { success: false, error: 'Missing required parameters' };
     }
 
@@ -146,16 +85,20 @@ export async function dbGet(
       return { success: false, error: 'Invalid table name' };
     }
 
-    const sql = `SELECT * FROM "${sanitizeColumnName(table)}" WHERE id = $1 LIMIT 1`;
-    const rows = await query(connectionString, sql, [id]);
+    // Get adapter for the database type
+    const adapter = getAdapter(connectionString);
+    console.log('[db_get] adapter type:', adapter.type);
 
-    if (rows.length === 0) {
+    const record = await adapter.get(table, id);
+    console.log('[db_get] record found:', record ? 'yes' : 'no', record ? Object.keys(record) : []);
+
+    if (!record) {
       return { success: false, error: 'Record not found' };
     }
 
-    return { success: true, data: rows[0] };
+    return { success: true, data: record };
   } catch (error) {
-    console.error('db_get error:', error);
+    console.error('[db_get] error:', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Database query failed',
@@ -174,20 +117,11 @@ export async function dbInsert(
   try {
     const { table, data } = params;
 
-    // Debug logging
-    console.log('db_insert called with:', {
-      table,
-      data,
-      hasConnectionString: !!connectionString,
-      paramsKeys: Object.keys(params),
-    });
-
     if (!table || !connectionString) {
       return { success: false, error: 'Missing required parameters: table or connection' };
     }
 
     if (!data || typeof data !== 'object') {
-      console.log('db_insert: data validation failed', { data, typeofData: typeof data });
       return { success: false, error: 'Missing required parameter: data' };
     }
 
@@ -202,19 +136,12 @@ export async function dbInsert(
       return { success: false, error: 'Invalid table name' };
     }
 
-    const columns = dataKeys.map(sanitizeColumnName);
-    const values = Object.values(dataObj);
-    const placeholders = values.map((_, i) => `$${i + 1}`);
+    // Get adapter for the database type
+    const adapter = getAdapter(connectionString);
 
-    const sql = `
-      INSERT INTO "${sanitizeColumnName(table)}" (${columns.map((c) => `"${c}"`).join(', ')})
-      VALUES (${placeholders.join(', ')})
-      RETURNING *
-    `;
+    const inserted = await adapter.insert(table, dataObj);
 
-    const rows = await query(connectionString, sql, values);
-
-    return { success: true, data: rows[0] };
+    return { success: true, data: inserted };
   } catch (error) {
     console.error('db_insert error:', error);
     return {
@@ -244,31 +171,24 @@ export async function dbUpdate(
     }
 
     // Remove id from data if present
-    const updateData = { ...data };
+    const updateData = { ...(data as Record<string, unknown>) };
     delete updateData.id;
+    delete updateData._id;
 
-    const columns = Object.keys(updateData).map(sanitizeColumnName);
-    const values = Object.values(updateData);
-
-    if (columns.length === 0) {
+    if (Object.keys(updateData).length === 0) {
       return { success: false, error: 'No data to update' };
     }
 
-    const setClause = columns.map((col, i) => `"${col}" = $${i + 1}`).join(', ');
-    const sql = `
-      UPDATE "${sanitizeColumnName(table)}"
-      SET ${setClause}
-      WHERE id = $${columns.length + 1}
-      RETURNING *
-    `;
+    // Get adapter for the database type
+    const adapter = getAdapter(connectionString);
 
-    const rows = await query(connectionString, sql, [...values, id]);
+    const updated = await adapter.update(table, id, updateData);
 
-    if (rows.length === 0) {
+    if (!updated) {
       return { success: false, error: 'Record not found' };
     }
 
-    return { success: true, data: rows[0] };
+    return { success: true, data: updated };
   } catch (error) {
     console.error('db_update error:', error);
     return {
@@ -297,10 +217,12 @@ export async function dbDelete(
       return { success: false, error: 'Invalid table name' };
     }
 
-    const sql = `DELETE FROM "${sanitizeColumnName(table)}" WHERE id = $1 RETURNING id`;
-    const rows = await query(connectionString, sql, [id]);
+    // Get adapter for the database type
+    const adapter = getAdapter(connectionString);
 
-    if (rows.length === 0) {
+    const deleted = await adapter.delete(table, id);
+
+    if (!deleted) {
       return { success: false, error: 'Record not found' };
     }
 
@@ -315,7 +237,7 @@ export async function dbDelete(
 }
 
 /**
- * db_search - Search and filter records with ILIKE for text search
+ * db_search - Search and filter records
  */
 export async function dbSearch(
   params: ActionParams,
@@ -333,137 +255,22 @@ export async function dbSearch(
       return { success: false, error: 'Invalid table name' };
     }
 
-    // Build query
-    let sql = `SELECT * FROM "${sanitizeColumnName(table)}"`;
-    const queryParams: unknown[] = [];
-    let paramIndex = 1;
-    const conditions: string[] = [];
+    // Get adapter for the database type
+    const adapter = getAdapter(connectionString);
 
-    // Add text search across searchable columns if provided
-    if (search && typeof search === 'string' && search.trim()) {
-      // Get column info to determine which columns to search
-      const columnsQuery = `
-        SELECT column_name, data_type
-        FROM information_schema.columns
-        WHERE table_name = $1
-        AND data_type IN ('text', 'character varying', 'varchar', 'char')
-      `;
-      const columnRows = await query<{ column_name: string; data_type: string }>(
-        connectionString,
-        columnsQuery,
-        [table]
-      );
-
-      if (columnRows.length > 0) {
-        const searchConditions = columnRows.map((col) => {
-          const colName = sanitizeColumnName(col.column_name);
-          const condition = `"${colName}" ILIKE $${paramIndex}`;
-          return condition;
-        });
-        conditions.push(`(${searchConditions.join(' OR ')})`);
-        queryParams.push(`%${search.trim()}%`);
-        paramIndex++;
-      }
-    }
-
-    // Add column filters if provided
-    if (filters && typeof filters === 'object') {
-      const filterObj = filters as Record<string, unknown>;
-      for (const [key, value] of Object.entries(filterObj)) {
-        // Skip the 'search' key as it's handled above
-        if (key === 'search' || value === null || value === undefined || value === '') {
-          continue;
-        }
-
-        // Handle date range filters (column_from and column_to)
-        if (key.endsWith('_from')) {
-          const baseColumn = key.slice(0, -5); // Remove '_from' suffix
-          const colName = sanitizeColumnName(baseColumn);
-          if (typeof value === 'string' && value.trim()) {
-            conditions.push(`"${colName}" >= $${paramIndex}`);
-            queryParams.push(value.trim());
-            paramIndex++;
-          }
-          continue;
-        }
-
-        if (key.endsWith('_to')) {
-          const baseColumn = key.slice(0, -3); // Remove '_to' suffix
-          const colName = sanitizeColumnName(baseColumn);
-          if (typeof value === 'string' && value.trim()) {
-            // For date-only values, add end of day to include the whole day
-            let dateValue = value.trim();
-            // If it's a date without time (YYYY-MM-DD format), add end of day
-            if (/^\d{4}-\d{2}-\d{2}$/.test(dateValue)) {
-              dateValue = `${dateValue}T23:59:59.999`;
-            }
-            conditions.push(`"${colName}" <= $${paramIndex}`);
-            queryParams.push(dateValue);
-            paramIndex++;
-          }
-          continue;
-        }
-
-        const colName = sanitizeColumnName(key);
-
-        // Handle boolean string values
-        if (value === 'true' || value === 'false') {
-          conditions.push(`"${colName}" = $${paramIndex}`);
-          queryParams.push(value === 'true');
-          paramIndex++;
-        } else if (typeof value === 'string' && value.trim()) {
-          // Text filter with ILIKE
-          conditions.push(`"${colName}" ILIKE $${paramIndex}`);
-          queryParams.push(`%${value.trim()}%`);
-          paramIndex++;
-        }
-      }
-    }
-
-    // Add WHERE clause if we have conditions
-    if (conditions.length > 0) {
-      sql += ` WHERE ${conditions.join(' AND ')}`;
-    }
-
-    // Add ORDER BY
-    if (orderBy) {
-      const colName = sanitizeColumnName(orderBy);
-      const direction = orderDirection === 'desc' ? 'DESC' : 'ASC';
-      sql += ` ORDER BY "${colName}" ${direction}`;
-    }
-
-    // Add pagination
-    const offset = (page - 1) * limit;
-    sql += ` LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
-    queryParams.push(limit, offset);
-
-    const rows = await query(connectionString, sql, queryParams);
-
-    // Get total count with same filters
-    let countSql = `SELECT COUNT(*) as total FROM "${sanitizeColumnName(table)}"`;
-    if (conditions.length > 0) {
-      countSql += ` WHERE ${conditions.join(' AND ')}`;
-    }
-    const countParams = queryParams.slice(0, -2); // Remove LIMIT and OFFSET params
-
-    const countResult = await query<{ total: string }>(
-      connectionString,
-      countSql,
-      countParams
-    );
-    const total = parseInt(countResult[0]?.total ?? '0', 10);
+    // Use the adapter's search method
+    const result = await adapter.search(table, {
+      page,
+      limit,
+      search: search as string,
+      filters: filters as Record<string, unknown>,
+      orderBy,
+      orderDirection,
+    });
 
     return {
       success: true,
-      data: {
-        items: rows,
-        pagination: {
-          page,
-          limit,
-          total,
-          totalPages: Math.ceil(total / limit),
-        },
-      },
+      data: result,
     };
   } catch (error) {
     console.error('db_search error:', error);
