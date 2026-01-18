@@ -648,6 +648,22 @@ export class SQLServerAdapter implements DatabaseAdapter {
     return mapSQLServerTypeToFieldType(nativeType);
   }
 
+  buildPaginationClause(
+    limitParamIndex: number,
+    limit: number,
+    offset: number = 0
+  ): { clause: string; params: unknown[]; nextIndex: number } {
+    // SQL Server requires ORDER BY for OFFSET/FETCH, but that's handled in the query
+    // Here we just build the OFFSET/FETCH part
+    const offsetParam = this.buildParameterPlaceholder(limitParamIndex);
+    const limitParam = this.buildParameterPlaceholder(limitParamIndex + 1);
+    return {
+      clause: `OFFSET ${offsetParam} ROWS FETCH NEXT ${limitParam} ROWS ONLY`,
+      params: [offset, limit],
+      nextIndex: limitParamIndex + 2,
+    };
+  }
+
   // ============================================
   // Private Methods
   // ============================================

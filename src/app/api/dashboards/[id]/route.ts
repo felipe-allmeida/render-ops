@@ -4,6 +4,32 @@ import prisma from '@/lib/db';
 import { z } from 'zod';
 import { ensureTenant, requireTenantPermission } from '@/lib/tenant';
 
+// Filter schemas
+const filterOperatorSchema = z.enum([
+  'eq', 'neq', 'gt', 'gte', 'lt', 'lte',
+  'contains', 'starts_with', 'ends_with',
+  'in', 'not_in', 'is_null', 'is_not_null'
+]);
+
+const widgetFilterSchema = z.object({
+  id: z.string(),
+  column: z.string(),
+  operator: filterOperatorSchema,
+  value: z.union([
+    z.string(),
+    z.number(),
+    z.boolean(),
+    z.array(z.string()),
+    z.array(z.number()),
+    z.null()
+  ]).optional(),
+});
+
+const filterGroupSchema = z.object({
+  logic: z.enum(['AND', 'OR']),
+  filters: z.array(widgetFilterSchema),
+});
+
 // Schema for updating a dashboard
 const updateDashboardSchema = z.object({
   name: z.string().min(1).max(100).optional(),
@@ -32,6 +58,7 @@ const updateDashboardSchema = z.object({
       xAxis: z.string().optional(),
       yAxis: z.string().optional(),
       content: z.string().optional(),
+      filters: filterGroupSchema.optional(),
     }).optional(),
   })).optional(),
   connectionIds: z.array(z.string()).optional(),

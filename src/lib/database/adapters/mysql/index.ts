@@ -555,6 +555,26 @@ export class MySQLAdapter implements DatabaseAdapter {
     return mapMySQLTypeToFieldType(nativeType);
   }
 
+  buildPaginationClause(
+    _limitParamIndex: number,
+    limit: number,
+    offset: number = 0
+  ): { clause: string; params: unknown[]; nextIndex: number } {
+    // MySQL uses ? for all parameters, so index doesn't matter
+    if (offset > 0) {
+      return {
+        clause: `LIMIT ? OFFSET ?`,
+        params: [limit, offset],
+        nextIndex: _limitParamIndex + 2,
+      };
+    }
+    return {
+      clause: `LIMIT ?`,
+      params: [limit],
+      nextIndex: _limitParamIndex + 1,
+    };
+  }
+
   // ============================================
   // Private Methods
   // ============================================

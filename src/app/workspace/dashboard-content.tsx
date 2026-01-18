@@ -1472,6 +1472,7 @@ function EmbeddedDashboard({ dashboardId, onDelete }: { dashboardId: string; onD
           field: isTableWidget ? undefined : widget.config.field,
           groupBy: isTableWidget ? undefined : widget.config.groupBy,
           datePeriod: isTableWidget ? undefined : widget.config.datePeriod,
+          filters: widget.config.filters,
         }),
       });
 

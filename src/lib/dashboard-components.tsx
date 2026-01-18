@@ -22,6 +22,26 @@ import {
 // Color palette for charts
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16'];
 
+// Filter Types
+export type FilterOperator =
+  | 'eq' | 'neq'                    // equals, not equals
+  | 'gt' | 'gte' | 'lt' | 'lte'     // comparison
+  | 'contains' | 'starts_with' | 'ends_with'  // text
+  | 'in' | 'not_in'                 // list
+  | 'is_null' | 'is_not_null';      // null checks
+
+export interface WidgetFilter {
+  id: string;           // UUID for React key
+  column: string;       // Column name
+  operator: FilterOperator;
+  value: string | number | boolean | string[] | null;
+}
+
+export interface FilterGroup {
+  logic: 'AND' | 'OR';
+  filters: WidgetFilter[];
+}
+
 // Types
 export interface Widget {
   id: string;
@@ -43,6 +63,7 @@ export interface Widget {
     xAxis?: string;
     yAxis?: string;
     content?: string;
+    filters?: FilterGroup;
   };
 }
 

@@ -241,6 +241,18 @@ export interface DatabaseAdapter {
    * Map a native database type to a normalized field type
    */
   mapTypeToFieldType(nativeType: string): FieldType;
+
+  /**
+   * Build pagination clause for the database
+   * PostgreSQL/MySQL: LIMIT $1 (or LIMIT ?)
+   * SQL Server: OFFSET @p1 ROWS FETCH NEXT @p2 ROWS ONLY
+   * Returns { clause: string, params: unknown[], nextIndex: number }
+   */
+  buildPaginationClause(
+    limitParamIndex: number,
+    limit: number,
+    offset?: number
+  ): { clause: string; params: unknown[]; nextIndex: number };
 }
 
 /**

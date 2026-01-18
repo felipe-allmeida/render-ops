@@ -53,6 +53,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       columns: schema.columns.map((col) => ({
         name: col.name,
         type: col.type,
+        fieldType: col.fieldType,
         nullable: col.nullable,
         default: col.defaultValue !== undefined,
       })),

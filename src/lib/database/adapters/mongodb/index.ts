@@ -456,6 +456,20 @@ export class MongoDBAdapter implements DatabaseAdapter {
     return typeMap[nativeType] ?? 'text';
   }
 
+  buildPaginationClause(
+    _limitParamIndex: number,
+    limit: number,
+    offset: number = 0
+  ): { clause: string; params: unknown[]; nextIndex: number } {
+    // MongoDB doesn't use SQL clauses, but we implement this for interface compatibility
+    // The actual pagination is done via skip() and limit() in MongoDB queries
+    return {
+      clause: '',
+      params: [limit, offset],
+      nextIndex: _limitParamIndex + 2,
+    };
+  }
+
   // ============================================
   // Private Methods
   // ============================================

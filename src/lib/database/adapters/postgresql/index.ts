@@ -573,6 +573,28 @@ export class PostgreSQLAdapter implements DatabaseAdapter {
     return mapPgTypeToFieldType(nativeType);
   }
 
+  buildPaginationClause(
+    limitParamIndex: number,
+    limit: number,
+    offset: number = 0
+  ): { clause: string; params: unknown[]; nextIndex: number } {
+    if (offset > 0) {
+      const limitParam = this.buildParameterPlaceholder(limitParamIndex);
+      const offsetParam = this.buildParameterPlaceholder(limitParamIndex + 1);
+      return {
+        clause: `LIMIT ${limitParam} OFFSET ${offsetParam}`,
+        params: [limit, offset],
+        nextIndex: limitParamIndex + 2,
+      };
+    }
+    const limitParam = this.buildParameterPlaceholder(limitParamIndex);
+    return {
+      clause: `LIMIT ${limitParam}`,
+      params: [limit],
+      nextIndex: limitParamIndex + 1,
+    };
+  }
+
   // ============================================
   // Private Methods
   // ============================================

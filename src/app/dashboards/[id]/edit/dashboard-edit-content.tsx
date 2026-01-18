@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ResponsiveGridLayout, LayoutItem } from 'react-grid-layout';
 import type { Layout, ResponsiveLayouts } from 'react-grid-layout';
-import { Widget, WidgetRenderer } from '@/lib/dashboard-components';
+import { Widget, WidgetRenderer, FilterGroup, WidgetFilter, FilterOperator } from '@/lib/dashboard-components';
 
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
@@ -26,9 +26,12 @@ interface TableInfo {
   type: string;
 }
 
+type FieldType = 'text' | 'number' | 'boolean' | 'date' | 'datetime' | 'time' | 'currency' | 'json' | 'binary' | 'uuid' | 'array';
+
 interface ColumnInfo {
   name: string;
   type: string;
+  fieldType?: FieldType;
   nullable: boolean;
 }
 
@@ -77,7 +80,111 @@ const DATE_PERIODS = [
   { id: 'year', name: 'Por ano' },
 ];
 
-const DATE_TYPES = ['date', 'timestamp', 'timestamp with time zone', 'timestamp without time zone', 'timestamptz'];
+const DATE_TYPES = [
+  // PostgreSQL
+  'date', 'timestamp', 'timestamp with time zone', 'timestamp without time zone', 'timestamptz',
+  // SQL Server
+  'datetime', 'datetime2', 'smalldatetime', 'datetimeoffset',
+  // MySQL
+  'datetime', 'date',
+];
+
+// Operators by field type
+const OPERATORS_BY_TYPE: Record<FieldType | 'default', { id: FilterOperator; name: string }[]> = {
+  text: [
+    { id: 'eq', name: 'Igual a' },
+    { id: 'neq', name: 'Diferente de' },
+    { id: 'contains', name: 'Contém' },
+    { id: 'starts_with', name: 'Começa com' },
+    { id: 'ends_with', name: 'Termina com' },
+    { id: 'in', name: 'Em lista' },
+    { id: 'not_in', name: 'Não está em lista' },
+    { id: 'is_null', name: 'É nulo' },
+    { id: 'is_not_null', name: 'Não é nulo' },
+  ],
+  number: [
+    { id: 'eq', name: 'Igual a' },
+    { id: 'neq', name: 'Diferente de' },
+    { id: 'gt', name: 'Maior que' },
+    { id: 'gte', name: 'Maior ou igual' },
+    { id: 'lt', name: 'Menor que' },
+    { id: 'lte', name: 'Menor ou igual' },
+    { id: 'in', name: 'Em lista' },
+    { id: 'not_in', name: 'Não está em lista' },
+    { id: 'is_null', name: 'É nulo' },
+    { id: 'is_not_null', name: 'Não é nulo' },
+  ],
+  currency: [
+    { id: 'eq', name: 'Igual a' },
+    { id: 'neq', name: 'Diferente de' },
+    { id: 'gt', name: 'Maior que' },
+    { id: 'gte', name: 'Maior ou igual' },
+    { id: 'lt', name: 'Menor que' },
+    { id: 'lte', name: 'Menor ou igual' },
+    { id: 'is_null', name: 'É nulo' },
+    { id: 'is_not_null', name: 'Não é nulo' },
+  ],
+  date: [
+    { id: 'eq', name: 'Igual a' },
+    { id: 'neq', name: 'Diferente de' },
+    { id: 'gt', name: 'Depois de' },
+    { id: 'gte', name: 'A partir de' },
+    { id: 'lt', name: 'Antes de' },
+    { id: 'lte', name: 'Até' },
+    { id: 'is_null', name: 'É nulo' },
+    { id: 'is_not_null', name: 'Não é nulo' },
+  ],
+  datetime: [
+    { id: 'eq', name: 'Igual a' },
+    { id: 'neq', name: 'Diferente de' },
+    { id: 'gt', name: 'Depois de' },
+    { id: 'gte', name: 'A partir de' },
+    { id: 'lt', name: 'Antes de' },
+    { id: 'lte', name: 'Até' },
+    { id: 'is_null', name: 'É nulo' },
+    { id: 'is_not_null', name: 'Não é nulo' },
+  ],
+  time: [
+    { id: 'eq', name: 'Igual a' },
+    { id: 'neq', name: 'Diferente de' },
+    { id: 'gt', name: 'Depois de' },
+    { id: 'lt', name: 'Antes de' },
+    { id: 'is_null', name: 'É nulo' },
+    { id: 'is_not_null', name: 'Não é nulo' },
+  ],
+  boolean: [
+    { id: 'eq', name: 'Igual a' },
+    { id: 'is_null', name: 'É nulo' },
+    { id: 'is_not_null', name: 'Não é nulo' },
+  ],
+  uuid: [
+    { id: 'eq', name: 'Igual a' },
+    { id: 'neq', name: 'Diferente de' },
+    { id: 'is_null', name: 'É nulo' },
+    { id: 'is_not_null', name: 'Não é nulo' },
+  ],
+  json: [
+    { id: 'is_null', name: 'É nulo' },
+    { id: 'is_not_null', name: 'Não é nulo' },
+  ],
+  binary: [
+    { id: 'is_null', name: 'É nulo' },
+    { id: 'is_not_null', name: 'Não é nulo' },
+  ],
+  array: [
+    { id: 'is_null', name: 'É nulo' },
+    { id: 'is_not_null', name: 'Não é nulo' },
+  ],
+  default: [
+    { id: 'eq', name: 'Igual a' },
+    { id: 'neq', name: 'Diferente de' },
+    { id: 'is_null', name: 'É nulo' },
+    { id: 'is_not_null', name: 'Não é nulo' },
+  ],
+};
+
+// Operators that don't need a value
+const NO_VALUE_OPERATORS: FilterOperator[] = ['is_null', 'is_not_null'];
 
 export function DashboardEditContent({ dashboardId, user, embedded = false }: DashboardEditContentProps) {
   const router = useRouter();
@@ -192,6 +299,7 @@ export function DashboardEditContent({ dashboardId, user, embedded = false }: Da
           field: isTableWidget ? undefined : widget.config.field,
           groupBy: isTableWidget ? undefined : widget.config.groupBy,
           datePeriod: isTableWidget ? undefined : widget.config.datePeriod,
+          filters: widget.config.filters,
         }),
       });
 
@@ -886,9 +994,7 @@ function ConfigPanel({
                       <option value="">Select field...</option>
                       {columns
                         .filter((c) =>
-                          ['integer', 'bigint', 'numeric', 'real', 'double precision', 'smallint', 'decimal', 'money'].includes(
-                            c.type.toLowerCase()
-                          )
+                          c.fieldType === 'number' || c.fieldType === 'currency'
                         )
                         .map((col) => (
                           <option key={col.name} value={col.name}>
@@ -986,6 +1092,15 @@ function ConfigPanel({
                 )}
               </>
             )}
+
+            {/* Filters Section */}
+            {widget.config?.table && (
+              <FilterEditor
+                filters={widget.config?.filters}
+                columns={columns}
+                onFiltersChange={(filters) => onConfigChangeAndRefresh({ filters })}
+              />
+            )}
           </>
         )}
 
@@ -1017,6 +1132,275 @@ function ConfigPanel({
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// Filter Editor Component
+interface FilterEditorProps {
+  filters?: FilterGroup;
+  columns: ColumnInfo[];
+  onFiltersChange: (filters: FilterGroup | undefined) => void;
+}
+
+function FilterEditor({ filters, columns, onFiltersChange }: FilterEditorProps) {
+  const [isExpanded, setIsExpanded] = useState(true);
+
+  const currentFilters: FilterGroup = filters || { logic: 'AND', filters: [] };
+  const filterCount = currentFilters.filters.length;
+
+  const addFilter = () => {
+    const newFilter: WidgetFilter = {
+      id: `filter-${Date.now()}`,
+      column: columns[0]?.name || '',
+      operator: 'eq',
+      value: '',
+    };
+    onFiltersChange({
+      ...currentFilters,
+      filters: [...currentFilters.filters, newFilter],
+    });
+    setIsExpanded(true);
+  };
+
+  const updateFilter = (filterId: string, updates: Partial<WidgetFilter>) => {
+    onFiltersChange({
+      ...currentFilters,
+      filters: currentFilters.filters.map((f) =>
+        f.id === filterId ? { ...f, ...updates } : f
+      ),
+    });
+  };
+
+  const removeFilter = (filterId: string) => {
+    const newFilters = currentFilters.filters.filter((f) => f.id !== filterId);
+    if (newFilters.length === 0) {
+      onFiltersChange(undefined);
+    } else {
+      onFiltersChange({
+        ...currentFilters,
+        filters: newFilters,
+      });
+    }
+  };
+
+  const setLogic = (logic: 'AND' | 'OR') => {
+    onFiltersChange({
+      ...currentFilters,
+      logic,
+    });
+  };
+
+  const getOperatorsForColumn = (columnName: string) => {
+    const column = columns.find((c) => c.name === columnName);
+    const fieldType = column?.fieldType || 'default';
+    return OPERATORS_BY_TYPE[fieldType] || OPERATORS_BY_TYPE.default;
+  };
+
+  const getInputType = (columnName: string, operator: FilterOperator): 'text' | 'number' | 'date' | 'datetime-local' | 'checkbox' | 'none' => {
+    if (NO_VALUE_OPERATORS.includes(operator)) return 'none';
+
+    const column = columns.find((c) => c.name === columnName);
+    const fieldType = column?.fieldType;
+
+    switch (fieldType) {
+      case 'number':
+      case 'currency':
+        return 'number';
+      case 'date':
+        return 'date';
+      case 'datetime':
+        return 'datetime-local';
+      case 'boolean':
+        return 'checkbox';
+      default:
+        return 'text';
+    }
+  };
+
+  return (
+    <div className="border-t border-gray-100 pt-4">
+      <button
+        type="button"
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="w-full flex items-center justify-between text-sm font-medium text-gray-700 hover:text-gray-900"
+      >
+        <span className="flex items-center gap-2">
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+          </svg>
+          Filtros
+          {filterCount > 0 && (
+            <span className="px-1.5 py-0.5 text-xs font-medium bg-primary-100 text-primary-700 rounded-full">
+              {filterCount}
+            </span>
+          )}
+        </span>
+        <svg
+          className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth={2}
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {isExpanded && (
+        <div className="mt-3 space-y-3">
+          {/* Logic Toggle */}
+          {filterCount > 1 && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-500">Lógica:</span>
+              <div className="flex rounded-lg border border-gray-200 overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setLogic('AND')}
+                  className={`px-3 py-1 text-xs font-medium transition-colors ${
+                    currentFilters.logic === 'AND'
+                      ? 'bg-primary-500 text-white'
+                      : 'bg-white text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  E
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLogic('OR')}
+                  className={`px-3 py-1 text-xs font-medium transition-colors ${
+                    currentFilters.logic === 'OR'
+                      ? 'bg-primary-500 text-white'
+                      : 'bg-white text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  OU
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Filter Rows */}
+          {currentFilters.filters.map((filter, index) => {
+            const operators = getOperatorsForColumn(filter.column);
+            const inputType = getInputType(filter.column, filter.operator);
+            const needsValue = !NO_VALUE_OPERATORS.includes(filter.operator);
+            const isListOperator = filter.operator === 'in' || filter.operator === 'not_in';
+
+            return (
+              <div key={filter.id} className="p-3 bg-gray-50 rounded-lg space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-gray-500">
+                    Filtro {index + 1}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => removeFilter(filter.id)}
+                    className="p-1 text-gray-400 hover:text-danger-600 rounded transition-colors"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+
+                {/* Column Select */}
+                <select
+                  value={filter.column}
+                  onChange={(e) => {
+                    const newColumn = e.target.value;
+                    const newOperators = getOperatorsForColumn(newColumn);
+                    const currentOperatorValid = newOperators.some((op) => op.id === filter.operator);
+                    updateFilter(filter.id, {
+                      column: newColumn,
+                      operator: currentOperatorValid ? filter.operator : newOperators[0]?.id || 'eq',
+                      value: '',
+                    });
+                  }}
+                  className="w-full px-2 py-1.5 text-sm bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
+                >
+                  {columns.map((col) => (
+                    <option key={col.name} value={col.name}>
+                      {col.name}
+                    </option>
+                  ))}
+                </select>
+
+                {/* Operator Select */}
+                <select
+                  value={filter.operator}
+                  onChange={(e) => {
+                    const newOperator = e.target.value as FilterOperator;
+                    updateFilter(filter.id, {
+                      operator: newOperator,
+                      value: NO_VALUE_OPERATORS.includes(newOperator) ? null : '',
+                    });
+                  }}
+                  className="w-full px-2 py-1.5 text-sm bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
+                >
+                  {operators.map((op) => (
+                    <option key={op.id} value={op.id}>
+                      {op.name}
+                    </option>
+                  ))}
+                </select>
+
+                {/* Value Input */}
+                {needsValue && (
+                  <>
+                    {isListOperator ? (
+                      <input
+                        type="text"
+                        value={Array.isArray(filter.value) ? filter.value.join(', ') : (filter.value as string) || ''}
+                        onChange={(e) => {
+                          const values = e.target.value.split(',').map((v) => v.trim()).filter(Boolean);
+                          updateFilter(filter.id, { value: values });
+                        }}
+                        placeholder="valor1, valor2, valor3"
+                        className="w-full px-2 py-1.5 text-sm bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
+                      />
+                    ) : inputType === 'checkbox' ? (
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={filter.value === true || filter.value === 'true'}
+                          onChange={(e) => updateFilter(filter.id, { value: e.target.checked })}
+                          className="w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                        />
+                        <span className="text-sm text-gray-600">Verdadeiro</span>
+                      </div>
+                    ) : (
+                      <input
+                        type={inputType}
+                        value={(filter.value as string | number) ?? ''}
+                        onChange={(e) => {
+                          const val = inputType === 'number' ? parseFloat(e.target.value) || 0 : e.target.value;
+                          updateFilter(filter.id, { value: val });
+                        }}
+                        placeholder="Valor..."
+                        className="w-full px-2 py-1.5 text-sm bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
+                      />
+                    )}
+                  </>
+                )}
+              </div>
+            );
+          })}
+
+          {/* Add Filter Button */}
+          <button
+            type="button"
+            onClick={addFilter}
+            disabled={columns.length === 0}
+            className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium text-primary-600 bg-primary-50 rounded-lg hover:bg-primary-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+            </svg>
+            Adicionar filtro
+          </button>
+        </div>
+      )}
     </div>
   );
 }
