@@ -616,11 +616,26 @@ const Table: React.FC<ElementProps> = ({ element, onAction }) => {
           </div>
         </div>
 
-        {/* Subtitle */}
-        <div className="px-5 py-2">
+        {/* Subtitle + Actions */}
+        <div className="px-5 py-2 flex items-center justify-between">
           <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
             {visibleColumns.length} de {columns.length} colunas selecionadas
           </p>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setVisibleColumnKeys(new Set())}
+              className="text-xs font-medium text-gray-500 hover:text-gray-700 px-2 py-1 rounded hover:bg-gray-100 transition-colors"
+            >
+              Limpar
+            </button>
+            <span className="text-gray-300">|</span>
+            <button
+              onClick={() => setVisibleColumnKeys(new Set(columns.map(c => c.key)))}
+              className="text-xs font-medium text-primary-600 hover:text-primary-700 px-2 py-1 rounded hover:bg-primary-50 transition-colors"
+            >
+              Selecionar todos
+            </button>
+          </div>
         </div>
 
         {/* Column list */}
