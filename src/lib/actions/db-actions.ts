@@ -74,10 +74,7 @@ export async function dbGet(
   try {
     const { table, id } = params;
 
-    console.log('[db_get] params:', { table, id, hasConnectionString: !!connectionString });
-
     if (!table || !id || !connectionString) {
-      console.log('[db_get] Missing params:', { table, id, connectionString: !!connectionString });
       return { success: false, error: 'Missing required parameters' };
     }
 
@@ -87,10 +84,8 @@ export async function dbGet(
 
     // Get adapter for the database type
     const adapter = getAdapter(connectionString);
-    console.log('[db_get] adapter type:', adapter.type);
 
     const record = await adapter.get(table, id);
-    console.log('[db_get] record found:', record ? 'yes' : 'no', record ? Object.keys(record) : []);
 
     if (!record) {
       return { success: false, error: 'Record not found' };
@@ -98,7 +93,7 @@ export async function dbGet(
 
     return { success: true, data: record };
   } catch (error) {
-    console.error('[db_get] error:', error);
+    console.error('db_get error:', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Database query failed',
