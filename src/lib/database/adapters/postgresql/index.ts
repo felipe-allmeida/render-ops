@@ -44,11 +44,17 @@ export class PostgreSQLAdapter implements DatabaseAdapter {
       return;
     }
 
+    // Check if SSL is specified in connection string
+    const connectionString = this.config.connectionString;
+    const hasSSLParam = connectionString.includes('sslmode=') || connectionString.includes('ssl=');
+
     this.pool = new Pool({
       connectionString: this.config.connectionString,
       max: this.config.poolSize ?? 5,
       idleTimeoutMillis: this.config.idleTimeout ?? 30000,
       connectionTimeoutMillis: this.config.connectionTimeout ?? 10000,
+      // Enable SSL for cloud databases if not explicitly configured
+      ssl: hasSSLParam ? undefined : { rejectUnauthorized: false },
     });
   }
 
