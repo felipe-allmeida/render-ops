@@ -327,12 +327,26 @@ export function DashboardContent({ user }: DashboardContentProps) {
       });
 
       if (response.ok) {
-        if (activeIntegration?.id === id) {
+        const wasActive = activeIntegration?.id === id;
+        const remainingCount = integrations.length - 1;
+
+        if (wasActive) {
           setActiveIntegration(null);
           setTables([]);
-          navigateTo(null);
         }
+
         await fetchIntegrations();
+
+        // Only navigate away if this was the last integration
+        if (remainingCount === 0) {
+          navigateTo(null);
+        } else if (wasActive) {
+          // Stay on integrations tab, select the first remaining integration
+          const remaining = integrations.filter((i) => i.id !== id);
+          if (remaining.length > 0) {
+            setActiveIntegration(remaining[0]);
+          }
+        }
       }
     } catch (error) {
       console.error('Failed to delete integration:', error);

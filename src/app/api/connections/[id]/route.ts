@@ -78,6 +78,13 @@ export async function DELETE(_request: NextRequest, { params }: RouteParams) {
         id,
         tenantId: tenant.tenantId,
       },
+      include: {
+        dashboards: {
+          include: {
+            dashboard: true,
+          },
+        },
+      },
     });
 
     if (!connection) {
@@ -87,12 +94,48 @@ export async function DELETE(_request: NextRequest, { params }: RouteParams) {
     // Close the adapter connection
     await closeAdapter(connection.connectionString);
 
-    // Delete the connection
+    // Get affected dashboards to clean up their widgets
+    const affectedDashboards = connection.dashboards.map((dc) => dc.dashboard);
+
+    // Clean up widgets that use this connection in each affected dashboard
+    for (const dashboard of affectedDashboards) {
+      const widgets = dashboard.widgets as Array<{
+        id: string;
+        config?: { connectionId?: string };
+      }>;
+
+      // Remove connectionId from widgets that use this connection
+      const updatedWidgets = widgets.map((widget) => {
+        if (widget.config?.connectionId === id) {
+          return {
+            ...widget,
+            config: {
+              ...widget.config,
+              connectionId: undefined,
+              table: undefined,
+              filters: undefined,
+            },
+          };
+        }
+        return widget;
+      });
+
+      // Update the dashboard with cleaned widgets
+      await prisma.dashboard.update({
+        where: { id: dashboard.id },
+        data: { widgets: updatedWidgets },
+      });
+    }
+
+    // Delete the connection (DashboardConnection records are cascade deleted)
     await prisma.connection.delete({
       where: { id },
     });
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({
+      success: true,
+      affectedDashboards: affectedDashboards.length,
+    });
   } catch (error) {
     console.error('Error deleting connection:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
