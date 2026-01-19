@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import prisma from '@/lib/db';
 import { getAdapter } from '@/lib/database';
-import { generateCrudUI } from '@/lib/ui-generator';
+import { generateCrudUI, ColumnDictionary } from '@/lib/ui-generator';
 import { z } from 'zod';
 import { ensureTenant } from '@/lib/tenant';
 
@@ -65,6 +65,44 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Table not found' }, { status: 404 });
     }
 
+    // Fetch dictionary entries for this table (including global entries)
+    const dictionaryEntries = await prisma.dataDictionary.findMany({
+      where: {
+        connectionId,
+        OR: [
+          { tableName: table },
+          { tableName: null },
+        ],
+      },
+    });
+
+    // Build dictionary map (table-specific overrides global)
+    const dictionary: Record<string, ColumnDictionary> = {};
+    // First add global entries
+    dictionaryEntries
+      .filter((e) => e.tableName === null)
+      .forEach((e) => {
+        dictionary[e.columnName] = {
+          columnName: e.columnName,
+          label: e.label,
+          description: e.description,
+          formatType: e.formatType,
+          enumMapping: e.enumMapping as Record<string, string> | null,
+        };
+      });
+    // Then override with table-specific entries
+    dictionaryEntries
+      .filter((e) => e.tableName === table)
+      .forEach((e) => {
+        dictionary[e.columnName] = {
+          columnName: e.columnName,
+          label: e.label,
+          description: e.description,
+          formatType: e.formatType,
+          enumMapping: e.enumMapping as Record<string, string> | null,
+        };
+      });
+
     // Build schema in the format expected by generateCrudUI
     const schema = {
       table: tableSchema.name,
@@ -82,8 +120,8 @@ export async function POST(request: NextRequest) {
       primaryKey: tableSchema.primaryKey,
     };
 
-    // Generate UI
-    const ui = generateCrudUI(schema, connectionId, { readonly });
+    // Generate UI with dictionary
+    const ui = generateCrudUI(schema, connectionId, { readonly, dictionary });
 
     return NextResponse.json({ ui, schema });
   } catch (error) {

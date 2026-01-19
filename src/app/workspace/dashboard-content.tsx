@@ -120,6 +120,11 @@ const Icons = {
       <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0l-1 3m8.5-3l1 3m0 0l.5 1.5m-.5-1.5h-9.5m0 0l-.5 1.5m.75-9l3-3 2.148 2.148A12.061 12.061 0 0116.5 7.605" />
     </svg>
   ),
+  book: (
+    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
+    </svg>
+  ),
 };
 
 // Database types available
@@ -152,6 +157,8 @@ export function DashboardContent({ user }: DashboardContentProps) {
   const [showIntegrationModal, setShowIntegrationModal] = useState(false);
   const [settingsTab, setSettingsTab] = useState<'overview' | 'integrations' | 'team'>('overview');
   const [settingsMenuOpen, setSettingsMenuOpen] = useState(false);
+  const [showDictionaryModal, setShowDictionaryModal] = useState(false);
+  const [dictionaryConnectionId, setDictionaryConnectionId] = useState<string | null>(null);
 
   // Navigation helpers
   const navigateTo = useCallback((view: string | null, params?: Record<string, string>) => {
@@ -921,6 +928,16 @@ export function DashboardContent({ user }: DashboardContentProps) {
                               Active
                             </span>
                             <button
+                              onClick={() => {
+                                setDictionaryConnectionId(integration.id);
+                                setShowDictionaryModal(true);
+                              }}
+                              className="p-2 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
+                              title="Data Dictionary"
+                            >
+                              {Icons.book}
+                            </button>
+                            <button
                               onClick={() => handleDeleteIntegration(integration.id)}
                               className="p-2 text-gray-400 hover:text-danger-600 hover:bg-danger-50 rounded-lg transition-colors"
                               title="Remove integration"
@@ -1018,6 +1035,16 @@ export function DashboardContent({ user }: DashboardContentProps) {
           setInputMode={setInputMode}
           onSubmit={handleCreateIntegration}
           onClose={() => setShowIntegrationModal(false)}
+        />
+      )}
+
+      {showDictionaryModal && dictionaryConnectionId && (
+        <DictionaryModal
+          connectionId={dictionaryConnectionId}
+          onClose={() => {
+            setShowDictionaryModal(false);
+            setDictionaryConnectionId(null);
+          }}
         />
       )}
     </div>
@@ -1440,6 +1467,64 @@ function EmbeddedDashboard({ dashboardId, onDelete }: { dashboardId: string; onD
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [shareData, setShareData] = useState<{
+    isPublic: boolean;
+    shareUrl: string | null;
+    shareExpiresAt: string | null;
+  } | null>(null);
+  const [isLoadingShare, setIsLoadingShare] = useState(false);
+
+  const fetchShareStatus = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/dashboards/${dashboardId}/share`);
+      if (res.ok) {
+        const data = await res.json();
+        setShareData(data);
+      }
+    } catch (err) {
+      console.error('Error fetching share status:', err);
+    }
+  }, [dashboardId]);
+
+  const handleEnableShare = async () => {
+    setIsLoadingShare(true);
+    try {
+      const res = await fetch(`/api/dashboards/${dashboardId}/share`, {
+        method: 'POST',
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setShareData(data);
+      }
+    } catch (err) {
+      console.error('Error enabling share:', err);
+    } finally {
+      setIsLoadingShare(false);
+    }
+  };
+
+  const handleDisableShare = async () => {
+    setIsLoadingShare(true);
+    try {
+      const res = await fetch(`/api/dashboards/${dashboardId}/share`, {
+        method: 'DELETE',
+      });
+      if (res.ok) {
+        setShareData({ isPublic: false, shareUrl: null, shareExpiresAt: null });
+      }
+    } catch (err) {
+      console.error('Error disabling share:', err);
+    } finally {
+      setIsLoadingShare(false);
+    }
+  };
+
+  const handleCopyLink = () => {
+    if (shareData?.shareUrl) {
+      navigator.clipboard.writeText(shareData.shareUrl);
+    }
+  };
 
   const handleDeleteDashboard = async () => {
     if (!confirm('Are you sure you want to delete this dashboard? This action cannot be undone.')) {
@@ -1593,6 +1678,19 @@ function EmbeddedDashboard({ dashboardId, onDelete }: { dashboardId: string; onD
               <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
             </svg>
           </button>
+          <button
+            onClick={() => {
+              setShowShareModal(true);
+              fetchShareStatus();
+            }}
+            className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg"
+            title="Share dashboard"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+            </svg>
+            <span className="hidden sm:inline">Share</span>
+          </button>
           <Link
             href={`/workspace?view=dashboard-edit&id=${dashboardId}`}
             className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg"
@@ -1660,6 +1758,91 @@ function EmbeddedDashboard({ dashboardId, onDelete }: { dashboardId: string; onD
               />
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Share Modal */}
+      {showShareModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+              <h2 className="text-lg font-semibold text-gray-900">Share Dashboard</h2>
+              <button
+                onClick={() => setShowShareModal(false)}
+                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="p-6">
+              {shareData?.isPublic ? (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-3 p-3 bg-success-50 rounded-lg">
+                    <div className="w-10 h-10 bg-success-100 rounded-full flex items-center justify-center">
+                      <svg className="w-5 h-5 text-success-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                      </svg>
+                    </div>
+                    <div>
+                      <p className="font-medium text-success-800">Link sharing enabled</p>
+                      <p className="text-sm text-success-600">Anyone with the link can view this dashboard</p>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Share Link</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={shareData.shareUrl || ''}
+                        readOnly
+                        className="flex-1 input-base bg-gray-50 text-sm"
+                      />
+                      <button
+                        onClick={handleCopyLink}
+                        className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 text-sm font-medium"
+                      >
+                        Copy
+                      </button>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={handleDisableShare}
+                    disabled={isLoadingShare}
+                    className="w-full px-4 py-2 text-sm font-medium text-danger-600 hover:bg-danger-50 rounded-lg border border-danger-200 disabled:opacity-50"
+                  >
+                    {isLoadingShare ? 'Disabling...' : 'Disable Link Sharing'}
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="text-center py-4">
+                    <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <svg className="w-8 h-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                      </svg>
+                    </div>
+                    <h3 className="font-medium text-gray-900 mb-1">Share this dashboard</h3>
+                    <p className="text-sm text-gray-500">
+                      Create a public link that anyone can use to view this dashboard
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={handleEnableShare}
+                    disabled={isLoadingShare}
+                    className="w-full px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 text-sm font-medium disabled:opacity-50"
+                  >
+                    {isLoadingShare ? 'Creating link...' : 'Create Share Link'}
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -1805,6 +1988,546 @@ function WorkspaceOverview({
         </div>
       </div>
 
+    </div>
+  );
+}
+
+// Data Dictionary Modal Component
+interface DictionaryEntry {
+  id: string;
+  tableName: string | null;
+  columnName: string;
+  label: string | null;
+  description: string | null;
+  formatType: string | null;
+  enumMapping: Record<string, string> | null;
+}
+
+const FORMAT_TYPES = [
+  { value: 'text', label: 'Text' },
+  { value: 'number', label: 'Number' },
+  { value: 'currency', label: 'Currency' },
+  { value: 'percent', label: 'Percent' },
+  { value: 'date', label: 'Date' },
+  { value: 'datetime', label: 'Date/Time' },
+  { value: 'time', label: 'Time' },
+  { value: 'phone', label: 'Phone' },
+  { value: 'email', label: 'Email' },
+  { value: 'url', label: 'URL' },
+  { value: 'boolean', label: 'Boolean' },
+];
+
+function DictionaryModal({
+  connectionId,
+  onClose,
+}: {
+  connectionId: string;
+  onClose: () => void;
+}) {
+  const [entries, setEntries] = useState<DictionaryEntry[]>([]);
+  const [tables, setTables] = useState<string[]>([]);
+  const [columns, setColumns] = useState<string[]>([]);
+  const [isLoadingColumns, setIsLoadingColumns] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [editingEntry, setEditingEntry] = useState<DictionaryEntry | null>(null);
+  const [isAddingNew, setIsAddingNew] = useState(false);
+
+  // Form state
+  const [formData, setFormData] = useState({
+    tableName: '',
+    columnName: '',
+    label: '',
+    description: '',
+    formatType: '',
+    enumMapping: '',
+  });
+
+  // Fetch columns when table changes
+  useEffect(() => {
+    const fetchColumns = async () => {
+      if (!formData.tableName) {
+        setColumns([]);
+        return;
+      }
+
+      setIsLoadingColumns(true);
+      try {
+        const res = await fetch(`/api/connections/${connectionId}/tables/${formData.tableName}/columns`);
+        if (res.ok) {
+          const data = await res.json();
+          setColumns((data.columns || []).map((c: { name: string }) => c.name));
+        }
+      } catch (err) {
+        console.error('Error loading columns:', err);
+      } finally {
+        setIsLoadingColumns(false);
+      }
+    };
+
+    fetchColumns();
+  }, [connectionId, formData.tableName]);
+
+  // Fetch entries and tables
+  useEffect(() => {
+    const fetchData = async () => {
+      setIsLoading(true);
+      setError(null);
+      try {
+        const [entriesRes, tablesRes] = await Promise.all([
+          fetch(`/api/connections/${connectionId}/dictionary`),
+          fetch(`/api/connections/${connectionId}/tables`),
+        ]);
+
+        if (entriesRes.ok) {
+          const data = await entriesRes.json();
+          setEntries(data.entries || []);
+        }
+
+        if (tablesRes.ok) {
+          const data = await tablesRes.json();
+          setTables((data.tables || []).map((t: { name: string }) => t.name));
+        }
+      } catch (err) {
+        setError('Failed to load data dictionary');
+        console.error('Error loading dictionary:', err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchData();
+  }, [connectionId]);
+
+  const handleSave = async () => {
+    if (!formData.columnName.trim()) {
+      setError('Column name is required');
+      return;
+    }
+
+    setIsSaving(true);
+    setError(null);
+
+    try {
+      // Parse enum mapping if provided
+      let enumMapping: Record<string, string> | null = null;
+      if (formData.enumMapping.trim()) {
+        try {
+          enumMapping = JSON.parse(formData.enumMapping);
+        } catch {
+          setError('Invalid JSON for enum mapping');
+          setIsSaving(false);
+          return;
+        }
+      }
+
+      const response = await fetch(`/api/connections/${connectionId}/dictionary`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tableName: formData.tableName || null,
+          columnName: formData.columnName.trim(),
+          label: formData.label.trim() || null,
+          description: formData.description.trim() || null,
+          formatType: formData.formatType || null,
+          enumMapping,
+        }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to save entry');
+      }
+
+      // Refresh entries
+      const refreshRes = await fetch(`/api/connections/${connectionId}/dictionary`);
+      if (refreshRes.ok) {
+        const data = await refreshRes.json();
+        setEntries(data.entries || []);
+      }
+
+      // Reset form
+      setFormData({
+        tableName: '',
+        columnName: '',
+        label: '',
+        description: '',
+        formatType: '',
+        enumMapping: '',
+      });
+      setEditingEntry(null);
+      setIsAddingNew(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save entry');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDelete = async (entryId: string) => {
+    if (!confirm('Are you sure you want to delete this dictionary entry?')) {
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        `/api/connections/${connectionId}/dictionary?entryId=${entryId}`,
+        { method: 'DELETE' }
+      );
+
+      if (response.ok) {
+        setEntries(entries.filter((e) => e.id !== entryId));
+      }
+    } catch (err) {
+      console.error('Error deleting entry:', err);
+    }
+  };
+
+  const startEdit = (entry: DictionaryEntry) => {
+    setEditingEntry(entry);
+    setIsAddingNew(false);
+    setFormData({
+      tableName: entry.tableName || '',
+      columnName: entry.columnName,
+      label: entry.label || '',
+      description: entry.description || '',
+      formatType: entry.formatType || '',
+      enumMapping: entry.enumMapping ? JSON.stringify(entry.enumMapping, null, 2) : '',
+    });
+  };
+
+  const startAdd = () => {
+    setEditingEntry(null);
+    setIsAddingNew(true);
+    setFormData({
+      tableName: '',
+      columnName: '',
+      label: '',
+      description: '',
+      formatType: '',
+      enumMapping: '',
+    });
+  };
+
+  const cancelEdit = () => {
+    setEditingEntry(null);
+    setIsAddingNew(false);
+    setFormData({
+      tableName: '',
+      columnName: '',
+      label: '',
+      description: '',
+      formatType: '',
+      enumMapping: '',
+    });
+  };
+
+  // Group entries by table
+  const groupedEntries = entries.reduce((acc, entry) => {
+    const key = entry.tableName || '(Global)';
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(entry);
+    return acc;
+  }, {} as Record<string, DictionaryEntry[]>);
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">Data Dictionary</h2>
+            <p className="text-sm text-gray-500">
+              Define friendly labels and formatting for your columns
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-6">
+          {isLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="w-8 h-8 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin" />
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {/* Error */}
+              {error && (
+                <div className="p-3 bg-danger-50 border border-danger-200 rounded-lg text-sm text-danger-700">
+                  {error}
+                </div>
+              )}
+
+              {/* Add/Edit Form */}
+              {(isAddingNew || editingEntry) && (
+                <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
+                  <h3 className="font-medium text-gray-900 mb-4">
+                    {editingEntry ? 'Edit Entry' : 'Add New Entry'}
+                  </h3>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Table (optional)
+                      </label>
+                      <select
+                        value={formData.tableName}
+                        onChange={(e) => setFormData({ ...formData, tableName: e.target.value, columnName: '' })}
+                        className="input-base"
+                        disabled={!!editingEntry}
+                      >
+                        <option value="">Global (all tables)</option>
+                        {tables.map((table) => (
+                          <option key={table} value={table}>
+                            {table}
+                          </option>
+                        ))}
+                      </select>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Leave empty to apply to all tables
+                      </p>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Column Name *
+                      </label>
+                      {formData.tableName ? (
+                        <select
+                          value={formData.columnName}
+                          onChange={(e) => setFormData({ ...formData, columnName: e.target.value })}
+                          className="input-base"
+                          disabled={!!editingEntry || isLoadingColumns}
+                        >
+                          <option value="">{isLoadingColumns ? 'Loading...' : 'Select column'}</option>
+                          {columns.map((col) => (
+                            <option key={col} value={col}>
+                              {col}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          type="text"
+                          value={formData.columnName}
+                          onChange={(e) => setFormData({ ...formData, columnName: e.target.value })}
+                          className="input-base"
+                          placeholder="e.g., created_at"
+                          disabled={!!editingEntry}
+                        />
+                      )}
+                      {!formData.tableName && (
+                        <p className="text-xs text-gray-500 mt-1">
+                          Select a table to see available columns
+                        </p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Display Label
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.label}
+                        onChange={(e) => setFormData({ ...formData, label: e.target.value })}
+                        className="input-base"
+                        placeholder="e.g., Data de Criação"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Format Type
+                      </label>
+                      <select
+                        value={formData.formatType}
+                        onChange={(e) => setFormData({ ...formData, formatType: e.target.value })}
+                        className="input-base"
+                      >
+                        <option value="">None</option>
+                        {FORMAT_TYPES.map((ft) => (
+                          <option key={ft.value} value={ft.value}>
+                            {ft.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="sm:col-span-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Description
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.description}
+                        onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                        className="input-base"
+                        placeholder="Help text for this column"
+                      />
+                    </div>
+
+                    <div className="sm:col-span-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Enum Mapping (JSON)
+                      </label>
+                      <textarea
+                        value={formData.enumMapping}
+                        onChange={(e) => setFormData({ ...formData, enumMapping: e.target.value })}
+                        className="input-base font-mono text-sm"
+                        rows={3}
+                        placeholder='{"PENDING": "Aguardando", "PAID": "Pago", "CANCELLED": "Cancelado"}'
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        Map database values to friendly display names
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end gap-2 mt-4">
+                    <button
+                      type="button"
+                      onClick={cancelEdit}
+                      className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200 rounded-lg transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSave}
+                      disabled={isSaving || !formData.columnName.trim()}
+                      className="px-4 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg disabled:opacity-50 transition-colors"
+                    >
+                      {isSaving ? 'Saving...' : editingEntry ? 'Update' : 'Add Entry'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Add Button */}
+              {!isAddingNew && !editingEntry && (
+                <button
+                  onClick={startAdd}
+                  className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
+                >
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                  </svg>
+                  Add Dictionary Entry
+                </button>
+              )}
+
+              {/* Entries List */}
+              {entries.length === 0 ? (
+                <div className="text-center py-12 text-gray-500">
+                  <svg className="w-12 h-12 mx-auto mb-4 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
+                  </svg>
+                  <p className="font-medium">No dictionary entries yet</p>
+                  <p className="text-sm mt-1">Add entries to define friendly labels for your columns</p>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {Object.entries(groupedEntries).map(([tableName, tableEntries]) => (
+                    <div key={tableName}>
+                      <h3 className="text-sm font-medium text-gray-500 mb-2 flex items-center gap-2">
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M3.375 19.5h17.25m-17.25 0a1.125 1.125 0 01-1.125-1.125M3.375 19.5h7.5c.621 0 1.125-.504 1.125-1.125m-9.75 0V5.625m0 12.75v-1.5c0-.621.504-1.125 1.125-1.125m18.375 2.625V5.625m0 12.75c0 .621-.504 1.125-1.125 1.125m1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125m0 3.75h-7.5A1.125 1.125 0 0112 18.375m9.75-12.75c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125m19.5 0v1.5c0 .621-.504 1.125-1.125 1.125M2.25 5.625v1.5c0 .621.504 1.125 1.125 1.125m0 0h17.25m-17.25 0h7.5c.621 0 1.125.504 1.125 1.125M3.375 8.25c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125m17.25-3.75h-7.5c-.621 0-1.125.504-1.125 1.125m8.625-1.125c.621 0 1.125.504 1.125 1.125v1.5c0 .621-.504 1.125-1.125 1.125" />
+                        </svg>
+                        {tableName}
+                      </h3>
+                      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+                        <table className="w-full">
+                          <thead className="bg-gray-50">
+                            <tr>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Column</th>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Label</th>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase hidden sm:table-cell">Format</th>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase hidden md:table-cell">Enum</th>
+                              <th className="px-4 py-3 w-20"></th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-100">
+                            {tableEntries.map((entry) => (
+                              <tr key={entry.id} className="hover:bg-gray-50">
+                                <td className="px-4 py-3 text-sm font-mono text-gray-900">
+                                  {entry.columnName}
+                                </td>
+                                <td className="px-4 py-3 text-sm text-gray-700">
+                                  {entry.label || <span className="text-gray-400">-</span>}
+                                </td>
+                                <td className="px-4 py-3 text-sm text-gray-500 hidden sm:table-cell">
+                                  {entry.formatType ? (
+                                    <span className="px-2 py-1 bg-gray-100 rounded text-xs">
+                                      {entry.formatType}
+                                    </span>
+                                  ) : (
+                                    <span className="text-gray-400">-</span>
+                                  )}
+                                </td>
+                                <td className="px-4 py-3 text-sm text-gray-500 hidden md:table-cell">
+                                  {entry.enumMapping ? (
+                                    <span className="text-xs text-primary-600">
+                                      {Object.keys(entry.enumMapping).length} mappings
+                                    </span>
+                                  ) : (
+                                    <span className="text-gray-400">-</span>
+                                  )}
+                                </td>
+                                <td className="px-4 py-3">
+                                  <div className="flex items-center gap-1">
+                                    <button
+                                      onClick={() => startEdit(entry)}
+                                      className="p-1.5 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded transition-colors"
+                                      title="Edit"
+                                    >
+                                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
+                                      </svg>
+                                    </button>
+                                    <button
+                                      onClick={() => handleDelete(entry.id)}
+                                      className="p-1.5 text-gray-400 hover:text-danger-600 hover:bg-danger-50 rounded transition-colors"
+                                      title="Delete"
+                                    >
+                                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                      </svg>
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-end px-6 py-4 border-t border-gray-100 bg-gray-50/50">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            Close
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

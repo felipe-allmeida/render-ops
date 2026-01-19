@@ -18,6 +18,15 @@ interface TableSchema {
   primaryKey: string[];
 }
 
+// Data dictionary entry for column labels and enum mappings
+export interface ColumnDictionary {
+  columnName: string;
+  label: string | null;
+  description: string | null;
+  formatType: string | null;
+  enumMapping: Record<string, string> | null;
+}
+
 /**
  * Map field type to form component type
  */
@@ -155,21 +164,41 @@ function detectEnhancedColumnType(col: ColumnSchema): {
 /**
  * Map column to table column definition with enhanced type info
  */
-function mapToTableColumn(col: ColumnSchema): {
+function mapToTableColumn(col: ColumnSchema, dictionary?: Record<string, ColumnDictionary>): {
   key: string;
   label: string;
   type: string;
   cellType: string;
   foreignTable?: string;
+  enumMapping?: Record<string, string>;
+  description?: string;
 } {
-  // Convert snake_case to Title Case
-  const label = col.name
+  // Get dictionary entry for this column
+  const dictEntry = dictionary?.[col.name];
+
+  // Use dictionary label or convert snake_case to Title Case
+  const label = dictEntry?.label || col.name
     .split('_')
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ');
 
   // Get enhanced type detection
-  const { cellType, foreignTable } = detectEnhancedColumnType(col);
+  const { cellType: detectedCellType, foreignTable } = detectEnhancedColumnType(col);
+
+  // Use dictionary format type if available
+  let cellType = detectedCellType;
+  if (dictEntry?.formatType) {
+    // Map dictionary format types to cell types
+    const formatToCellType: Record<string, string> = {
+      currency: 'currency',
+      percent: 'percentage',
+      date: 'date',
+      datetime: 'datetime',
+      boolean: 'boolean',
+      number: 'number',
+    };
+    cellType = formatToCellType[dictEntry.formatType] || detectedCellType;
+  }
 
   // Basic type for backwards compatibility
   let type: string;
@@ -191,20 +220,50 @@ function mapToTableColumn(col: ColumnSchema): {
       type = 'text';
   }
 
-  return { key: col.name, label, type, cellType, foreignTable };
+  return {
+    key: col.name,
+    label,
+    type,
+    cellType,
+    foreignTable,
+    enumMapping: dictEntry?.enumMapping || undefined,
+    description: dictEntry?.description || undefined,
+  };
 }
 
 /**
  * Generate form field element
  */
-function generateFormField(col: ColumnSchema, basePath: string): UIElement {
-  const label = col.name
+function generateFormField(col: ColumnSchema, basePath: string, dictionary?: Record<string, ColumnDictionary>): UIElement {
+  // Get dictionary entry for this column
+  const dictEntry = dictionary?.[col.name];
+
+  // Use dictionary label or convert snake_case to Title Case
+  const label = dictEntry?.label || col.name
     .split('_')
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ');
 
   const valuePath = `${basePath}/${col.name}`;
   const required = !col.nullable && !col.hasDefault;
+
+  // If has enum mapping, use SelectField with options from dictionary
+  if (dictEntry?.enumMapping && Object.keys(dictEntry.enumMapping).length > 0) {
+    return {
+      type: 'SelectField',
+      props: {
+        label,
+        valuePath,
+        required,
+        options: Object.entries(dictEntry.enumMapping).map(([value, displayLabel]) => ({
+          value,
+          label: displayLabel,
+        })),
+        placeholder: 'Select...',
+        helperText: dictEntry.description || undefined,
+      },
+    };
+  }
 
   // Boolean fields use SelectField
   if (col.fieldType === 'boolean') {
@@ -219,6 +278,7 @@ function generateFormField(col: ColumnSchema, basePath: string): UIElement {
           { value: false, label: 'No' },
         ],
         placeholder: 'Select...',
+        helperText: dictEntry?.description || undefined,
       },
     };
   }
@@ -228,6 +288,7 @@ function generateFormField(col: ColumnSchema, basePath: string): UIElement {
     label,
     valuePath,
     required,
+    helperText: dictEntry?.description || undefined,
   };
 
   if (component === 'TextField') {
@@ -260,6 +321,7 @@ function generateFormField(col: ColumnSchema, basePath: string): UIElement {
 
 interface GenerateOptions {
   readonly?: boolean;
+  dictionary?: Record<string, ColumnDictionary>;
 }
 
 /**
@@ -270,12 +332,15 @@ export function generateCrudUI(
   connectionId: string,
   options: GenerateOptions = {}
 ): UIElement {
-  const { readonly = false } = options;
+  const { readonly = false, dictionary } = options;
   const { table, columns, primaryKey } = schema;
   const pkColumn = primaryKey[0] || 'id';
   const displayColumns = getTableDisplayColumns(columns);
   // Include JSON columns even if they have defaults (they're usually editable)
   const formColumns = columns.filter((col) => !col.isPrimaryKey && (!col.hasDefault || col.fieldType === 'json'));
+
+  // Helper function to get dictionary label for a column
+  const getDictLabel = (colName: string): string | null => dictionary?.[colName]?.label || null;
 
   // Title case for table name
   const tableTitle = table
@@ -317,7 +382,8 @@ export function generateCrudUI(
                   searchPath: '/filters/search',
                   searchPlaceholder: `Search ${table}...`,
                   filters: getSearchableColumns(columns).map((col) => {
-                    const label = col.name
+                    // Use dictionary label or convert snake_case to Title Case
+                    const label = getDictLabel(col.name) || col.name
                       .split('_')
                       .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
                       .join(' ');
@@ -427,7 +493,7 @@ export function generateCrudUI(
               {
                 type: 'Table',
                 props: {
-                  columns: displayColumns.map(mapToTableColumn),
+                  columns: displayColumns.map((col) => mapToTableColumn(col, dictionary)),
                   dataPath: '/data/items',
                   rowKey: pkColumn,
                   connectionId, // Pass connectionId for FK lookups
@@ -506,7 +572,7 @@ export function generateCrudUI(
             },
           },
         },
-        children: formColumns.map((col) => generateFormField(col, '/form')),
+        children: formColumns.map((col) => generateFormField(col, '/form', dictionary)),
       }] : []),
 
       // Edit Modal with Form (only if not readonly)
@@ -538,7 +604,7 @@ export function generateCrudUI(
             },
           },
         },
-        children: formColumns.map((col) => generateFormField(col, '/form')),
+        children: formColumns.map((col) => generateFormField(col, '/form', dictionary)),
       }] : []),
 
       // Delete confirmation modal (only if not readonly)
@@ -584,7 +650,8 @@ export function generateCrudUI(
  */
 export function generateListUI(
   schema: TableSchema,
-  connectionId: string
+  connectionId: string,
+  dictionary?: Record<string, ColumnDictionary>
 ): UIElement {
   const { table, columns, primaryKey } = schema;
   const pkColumn = primaryKey[0] || 'id';
@@ -602,7 +669,7 @@ export function generateListUI(
       {
         type: 'Table',
         props: {
-          columns: displayColumns.map(mapToTableColumn),
+          columns: displayColumns.map((col) => mapToTableColumn(col, dictionary)),
           dataPath: `/data/${table}`,
           rowKey: pkColumn,
           emptyMessage: 'No records found',

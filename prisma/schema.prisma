@@ -59,10 +59,31 @@ model Connection {
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
-  tenant     Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  dashboards DashboardConnection[]
+  tenant         Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  dashboards     DashboardConnection[]
+  dataDictionary DataDictionary[]
 
   @@index([tenantId])
+}
+
+// Data Dictionary - friendly labels and enum mappings for columns
+model DataDictionary {
+  id           String   @id @default(cuid())
+  connectionId String
+  tableName    String?  // null = applies to all tables with this column
+  columnName   String
+  label        String?  // Friendly label (e.g., "created_at" -> "Data de Criação")
+  description  String?  // Tooltip/help text
+  formatType   String?  // currency, date, datetime, phone, percent, number, etc.
+  enumMapping  Json?    // {"PENDING": "Aguardando", "PAID": "Pago"}
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  connection Connection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@unique([connectionId, tableName, columnName])
+  @@index([connectionId])
+  @@index([connectionId, tableName])
 }
 
 model AuditLog {
@@ -83,20 +104,24 @@ model AuditLog {
 }
 
 model Dashboard {
-  id          String   @id @default(cuid())
-  name        String
-  description String?
-  tenantId    String
-  createdBy   String   // userId who created (audit)
-  layout      Json     @default("{}")
-  widgets     Json     @default("[]")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id             String    @id @default(cuid())
+  name           String
+  description    String?
+  tenantId       String
+  createdBy      String    // userId who created (audit)
+  layout         Json      @default("{}")
+  widgets        Json      @default("[]")
+  isPublic       Boolean   @default(false)
+  shareToken     String?   @unique
+  shareExpiresAt DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   tenant      Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   connections DashboardConnection[]
 
   @@index([tenantId])
+  @@index([shareToken])
 }
 
 model DashboardConnection {

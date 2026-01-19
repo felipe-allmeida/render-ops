@@ -303,7 +303,7 @@ const Table: React.FC<ElementProps> = ({ element, onAction }) => {
     enableColumnToggle = false,
     defaultVisibleColumns = 6,
   } = element.props as {
-    columns: Array<{ key: string; label: string; type?: string; cellType?: string; foreignTable?: string; width?: string }>;
+    columns: Array<{ key: string; label: string; type?: string; cellType?: string; foreignTable?: string; width?: string; enumMapping?: Record<string, string>; description?: string }>;
     dataPath: string;
     rowKey: string;
     emptyMessage?: string;
@@ -370,9 +370,23 @@ const Table: React.FC<ElementProps> = ({ element, onAction }) => {
   };
 
   // Render cell based on cellType
-  const renderCell = (value: unknown, col: { key: string; label?: string; type?: string; cellType?: string; foreignTable?: string }): React.ReactNode => {
+  const renderCell = (value: unknown, col: { key: string; label?: string; type?: string; cellType?: string; foreignTable?: string; enumMapping?: Record<string, string> }): React.ReactNode => {
     if (value === null || value === undefined) {
       return <span className="text-gray-400">—</span>;
+    }
+
+    // Apply enum mapping if available
+    if (col.enumMapping && typeof value === 'string' && col.enumMapping[value]) {
+      const displayValue = col.enumMapping[value];
+      const catColors = getCategoryColor(value);
+      return (
+        <span className={cn(
+          'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border',
+          catColors.bg, catColors.text, catColors.border
+        )}>
+          {displayValue}
+        </span>
+      );
     }
 
     const cellType = col.cellType || col.type || 'text';
