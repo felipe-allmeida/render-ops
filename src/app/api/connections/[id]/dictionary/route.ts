@@ -95,12 +95,14 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     const { tableName, columnName, label, description, formatType, enumMapping } = validation.data;
 
-    // Upsert - create or update
+    // Upsert - create or update (use empty string for global entries)
+    const tableNameValue = tableName || '';
+
     const entry = await prisma.dataDictionary.upsert({
       where: {
         connectionId_tableName_columnName: {
           connectionId,
-          tableName: tableName || null,
+          tableName: tableNameValue,
           columnName,
         },
       },
@@ -112,7 +114,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       },
       create: {
         connectionId,
-        tableName: tableName || null,
+        tableName: tableNameValue,
         columnName,
         label,
         description,

@@ -4,7 +4,7 @@ interface ColumnSchema {
   name: string;
   type: string;
   udtType: string;
-  fieldType: 'text' | 'number' | 'boolean' | 'date' | 'datetime' | 'currency' | 'json';
+  fieldType: 'text' | 'number' | 'boolean' | 'date' | 'datetime' | 'time' | 'currency' | 'json' | 'binary' | 'uuid' | 'array';
   nullable: boolean;
   hasDefault: boolean;
   isPrimaryKey: boolean;

@@ -172,9 +172,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         } else {
           sql = `SELECT COUNT(*) as value FROM ${adapter.escapeIdentifier(safeTable)} ${whereClause}`;
           queryResult = await adapter.query(sql, whereParams);
+          const row = queryResult.rows[0] as Record<string, unknown> | undefined;
           return NextResponse.json({
             success: true,
-            data: parseInt(queryResult.rows[0]?.value || '0', 10),
+            data: parseInt(String(row?.value ?? '0'), 10),
             type: 'single',
           });
         }
@@ -218,9 +219,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         } else {
           sql = `SELECT ${aggregation.toUpperCase()}(${adapter.escapeIdentifier(safeField)}) as value FROM ${adapter.escapeIdentifier(safeTable)} ${whereClause}`;
           queryResult = await adapter.query(sql, whereParams);
+          const row = queryResult.rows[0] as Record<string, unknown> | undefined;
           return NextResponse.json({
             success: true,
-            data: Number(queryResult.rows[0]?.value) || 0,
+            data: Number(row?.value) || 0,
             type: 'single',
           });
         }
@@ -238,7 +240,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       // Get total count with filters
       const countSql = `SELECT COUNT(*) as count FROM ${adapter.escapeIdentifier(safeTable)} ${whereClause}`;
       const countResult = await adapter.query(countSql, whereParams);
-      const total = parseInt(countResult.rows[0]?.count || '0', 10);
+      const countRow = countResult.rows[0] as Record<string, unknown> | undefined;
+      const total = parseInt(String(countRow?.count ?? '0'), 10);
 
       // Build pagination clause
       const pagination = adapter.buildPaginationClause(nextIndex, limit, offset);

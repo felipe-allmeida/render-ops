@@ -843,26 +843,28 @@ async function seedSqlServer(
 ) {
   console.log('\n🔷 Seeding SQL Server...');
 
+  let pool: sql.ConnectionPool | null = null;
+
   try {
     // First connect to master to ensure database exists
-    await sql.connect(CONFIG.SQLSERVER);
+    pool = await sql.connect(CONFIG.SQLSERVER);
 
     // Check if database exists, create if needed
     console.log('  Setting up database...');
-    await sql.query`
+    await pool.query`
       IF NOT EXISTS (SELECT * FROM sys.databases WHERE name = 'ecommerce_demo')
       BEGIN
           CREATE DATABASE ecommerce_demo;
       END
     `;
-    await sql.close();
+    await pool.close();
 
     // Now connect directly to ecommerce_demo
     const ecommerceConfig = {
       ...CONFIG.SQLSERVER,
       database: 'ecommerce_demo',
     };
-    await sql.connect(ecommerceConfig);
+    pool = await sql.connect(ecommerceConfig);
 
     // Run schema creation (this is idempotent)
     const schemaPath = 'docker/sqlserver-ecommerce/schema.sql';
@@ -877,7 +879,7 @@ async function seedSqlServer(
       for (const batch of batches) {
         if (batch.trim()) {
           try {
-            await sql.query(batch);
+            await pool!.query(batch);
           } catch (e) {
             // Ignore errors for IF NOT EXISTS statements
           }
@@ -887,28 +889,28 @@ async function seedSqlServer(
 
     // Clear existing data
     console.log('  Clearing existing data...');
-    await sql.query`DELETE FROM reviews`;
-    await sql.query`DELETE FROM order_items`;
-    await sql.query`DELETE FROM orders`;
-    await sql.query`DELETE FROM addresses`;
-    await sql.query`DELETE FROM customers`;
-    await sql.query`DELETE FROM inventory_log`;
-    await sql.query`DELETE FROM products`;
-    await sql.query`DELETE FROM categories`;
+    await pool.query`DELETE FROM reviews`;
+    await pool.query`DELETE FROM order_items`;
+    await pool.query`DELETE FROM orders`;
+    await pool.query`DELETE FROM addresses`;
+    await pool.query`DELETE FROM customers`;
+    await pool.query`DELETE FROM inventory_log`;
+    await pool.query`DELETE FROM products`;
+    await pool.query`DELETE FROM categories`;
 
     // Reset identity seeds
-    await sql.query`DBCC CHECKIDENT ('categories', RESEED, 0)`;
-    await sql.query`DBCC CHECKIDENT ('products', RESEED, 0)`;
-    await sql.query`DBCC CHECKIDENT ('customers', RESEED, 0)`;
-    await sql.query`DBCC CHECKIDENT ('addresses', RESEED, 0)`;
-    await sql.query`DBCC CHECKIDENT ('orders', RESEED, 0)`;
-    await sql.query`DBCC CHECKIDENT ('order_items', RESEED, 0)`;
-    await sql.query`DBCC CHECKIDENT ('reviews', RESEED, 0)`;
+    await pool.query`DBCC CHECKIDENT ('categories', RESEED, 0)`;
+    await pool.query`DBCC CHECKIDENT ('products', RESEED, 0)`;
+    await pool.query`DBCC CHECKIDENT ('customers', RESEED, 0)`;
+    await pool.query`DBCC CHECKIDENT ('addresses', RESEED, 0)`;
+    await pool.query`DBCC CHECKIDENT ('orders', RESEED, 0)`;
+    await pool.query`DBCC CHECKIDENT ('order_items', RESEED, 0)`;
+    await pool.query`DBCC CHECKIDENT ('reviews', RESEED, 0)`;
 
     // Categories (no explicit id)
     console.log('  Inserting categories...');
     for (const cat of categories) {
-      await sql.query`
+      await pool.query`
         INSERT INTO categories (name, description, parent_id)
         VALUES (${cat.name}, ${cat.description}, ${cat.parent_id})
       `;
@@ -919,7 +921,7 @@ async function seedSqlServer(
     for (let i = 0; i < products.length; i += CONFIG.BATCH_SIZE.SQLSERVER) {
       const batch = products.slice(i, i + CONFIG.BATCH_SIZE.SQLSERVER);
       for (const p of batch) {
-        await sql.query`
+        await pool.query`
           INSERT INTO products (sku, name, description, price, cost, stock_quantity, category_id, is_active, weight)
           VALUES (${p.sku}, ${p.name}, ${p.description}, ${p.price}, ${p.cost}, ${p.stock_quantity}, ${p.category_id}, ${p.is_active ? 1 : 0}, ${p.weight})
         `;
@@ -933,7 +935,7 @@ async function seedSqlServer(
     for (let i = 0; i < customers.length; i += CONFIG.BATCH_SIZE.SQLSERVER) {
       const batch = customers.slice(i, i + CONFIG.BATCH_SIZE.SQLSERVER);
       for (const c of batch) {
-        await sql.query`
+        await pool.query`
           INSERT INTO customers (email, first_name, last_name, phone, date_of_birth)
           VALUES (${c.email}, ${c.first_name}, ${c.last_name}, ${c.phone}, ${c.date_of_birth})
         `;
@@ -947,7 +949,7 @@ async function seedSqlServer(
     for (let i = 0; i < addresses.length; i += CONFIG.BATCH_SIZE.SQLSERVER) {
       const batch = addresses.slice(i, i + CONFIG.BATCH_SIZE.SQLSERVER);
       for (const a of batch) {
-        await sql.query`
+        await pool.query`
           INSERT INTO addresses (customer_id, address_type, street_address, city, state, postal_code, country, is_default)
           VALUES (${a.customer_id}, ${a.address_type}, ${a.street_address}, ${a.city}, ${a.state}, ${a.postal_code}, ${a.country}, ${a.is_default ? 1 : 0})
         `;
@@ -961,7 +963,7 @@ async function seedSqlServer(
     for (let i = 0; i < orders.length; i += CONFIG.BATCH_SIZE.SQLSERVER) {
       const batch = orders.slice(i, i + CONFIG.BATCH_SIZE.SQLSERVER);
       for (const o of batch) {
-        await sql.query`
+        await pool.query`
           INSERT INTO orders (order_number, customer_id, status, subtotal, tax_amount, shipping_amount, discount_amount, total_amount, shipping_address_id, billing_address_id, created_at)
           VALUES (${o.order_number}, ${o.customer_id}, ${o.status}, ${o.subtotal}, ${o.tax_amount}, ${o.shipping_amount}, ${o.discount_amount}, ${o.total_amount}, ${o.shipping_address_id}, ${o.billing_address_id}, ${o.created_at})
         `;
@@ -975,7 +977,7 @@ async function seedSqlServer(
     for (let i = 0; i < orderItems.length; i += CONFIG.BATCH_SIZE.SQLSERVER) {
       const batch = orderItems.slice(i, i + CONFIG.BATCH_SIZE.SQLSERVER);
       for (const oi of batch) {
-        await sql.query`
+        await pool.query`
           INSERT INTO order_items (order_id, product_id, quantity, unit_price, total_price)
           VALUES (${oi.order_id}, ${oi.product_id}, ${oi.quantity}, ${oi.unit_price}, ${oi.total_price})
         `;
@@ -989,7 +991,7 @@ async function seedSqlServer(
     for (let i = 0; i < reviews.length; i += CONFIG.BATCH_SIZE.SQLSERVER) {
       const batch = reviews.slice(i, i + CONFIG.BATCH_SIZE.SQLSERVER);
       for (const r of batch) {
-        await sql.query`
+        await pool.query`
           INSERT INTO reviews (product_id, customer_id, rating, title, comment, is_verified_purchase)
           VALUES (${r.product_id}, ${r.customer_id}, ${r.rating}, ${r.title}, ${r.comment}, ${r.is_verified_purchase ? 1 : 0})
         `;
@@ -1000,7 +1002,9 @@ async function seedSqlServer(
 
     console.log('  ✅ SQL Server seeded successfully!');
   } finally {
-    await sql.close();
+    if (pool) {
+      await pool.close();
+    }
   }
 }
 
@@ -1034,7 +1038,7 @@ async function seedMongodb(
     // Categories
     console.log('  Inserting categories...');
     const mongoCats = categories.map((c) => ({
-      _id: c.id,
+      _id: c.id as unknown as import('mongodb').ObjectId,
       name: c.name,
       description: c.description,
       parentId: c.parent_id,
@@ -1047,7 +1051,7 @@ async function seedMongodb(
     for (let i = 0; i < products.length; i += CONFIG.BATCH_SIZE.MONGODB) {
       const batch = products.slice(i, i + CONFIG.BATCH_SIZE.MONGODB);
       const mongoBatch = batch.map((p) => ({
-        _id: p.id,
+        _id: p.id as unknown as import('mongodb').ObjectId,
         sku: p.sku,
         name: p.name,
         description: p.description,
@@ -1078,7 +1082,7 @@ async function seedMongodb(
     for (let i = 0; i < customers.length; i += CONFIG.BATCH_SIZE.MONGODB) {
       const batch = customers.slice(i, i + CONFIG.BATCH_SIZE.MONGODB);
       const mongoBatch = batch.map((c) => ({
-        _id: c.id,
+        _id: c.id as unknown as import('mongodb').ObjectId,
         email: c.email,
         firstName: c.first_name,
         lastName: c.last_name,
@@ -1114,7 +1118,7 @@ async function seedMongodb(
     for (let i = 0; i < orders.length; i += CONFIG.BATCH_SIZE.MONGODB) {
       const batch = orders.slice(i, i + CONFIG.BATCH_SIZE.MONGODB);
       const mongoBatch = batch.map((o) => ({
-        _id: o.id,
+        _id: o.id as unknown as import('mongodb').ObjectId,
         orderNumber: o.order_number,
         customerId: o.customer_id,
         status: o.status,

@@ -70,7 +70,7 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
         .map((c) => c.name);
 
       return NextResponse.json({
-        table: schema.tableName,
+        table: schema.name,
         columns,
         primaryKey,
       });

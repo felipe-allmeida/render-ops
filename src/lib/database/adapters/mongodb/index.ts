@@ -393,7 +393,7 @@ export class MongoDBAdapter implements DatabaseAdapter {
     const docs = await collection.aggregate(pipeline as Document[]).toArray();
 
     return {
-      rows: docs.map((doc) => this.convertDocument(doc)) as T[],
+      rows: docs.map((doc) => this.convertDocument(doc as WithId<Document>)) as T[],
       rowCount: docs.length,
     };
   }
@@ -481,7 +481,7 @@ export class MongoDBAdapter implements DatabaseAdapter {
   }
 
   private buildFilter(where: Record<string, unknown>): Filter<Document> {
-    const filter: Filter<Document> = {};
+    const filter: Record<string, unknown> = {};
 
     for (const [key, value] of Object.entries(where)) {
       if (value === null) {
@@ -494,14 +494,14 @@ export class MongoDBAdapter implements DatabaseAdapter {
       }
     }
 
-    return filter;
+    return filter as Filter<Document>;
   }
 
   private buildIdFilter(id: string | number): Filter<Document> {
-    return { _id: this.toObjectId(id) };
+    return { _id: this.toObjectId(id) } as Filter<Document>;
   }
 
-  private toObjectId(id: unknown): ObjectId | unknown {
+  private toObjectId(id: unknown): ObjectId | string | number {
     if (id instanceof ObjectId) {
       return id;
     }
@@ -514,7 +514,11 @@ export class MongoDBAdapter implements DatabaseAdapter {
       }
     }
 
-    return id;
+    if (typeof id === 'number') {
+      return id;
+    }
+
+    return String(id);
   }
 
   private convertDocument(doc: WithId<Document>): Record<string, unknown> {
