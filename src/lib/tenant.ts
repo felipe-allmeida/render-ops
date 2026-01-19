@@ -71,25 +71,57 @@ export async function ensureTenant(
     return existing;
   }
 
-  // Create a new tenant for the user
+  // Create a new tenant for the user (with retry for race conditions)
   const slug = generateSlug(userName || userId);
-  const tenant = await prisma.tenant.create({
-    data: {
-      name: userName ? `${userName}'s Workspace` : 'My Workspace',
-      slug: await ensureUniqueSlug(slug),
-      memberships: {
-        create: {
-          userId,
-          role: 'OWNER',
+
+  try {
+    const tenant = await prisma.tenant.create({
+      data: {
+        name: userName ? `${userName}'s Workspace` : 'My Workspace',
+        slug: await ensureUniqueSlug(slug),
+        memberships: {
+          create: {
+            userId,
+            role: 'OWNER',
+          },
         },
       },
-    },
-  });
+    });
 
-  return {
-    tenantId: tenant.id,
-    role: 'OWNER',
-  };
+    return {
+      tenantId: tenant.id,
+      role: 'OWNER',
+    };
+  } catch (error: unknown) {
+    // Handle race condition - another request may have created the tenant
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'P2002') {
+      // Wait a bit and check again for the tenant
+      await new Promise(resolve => setTimeout(resolve, 100));
+      const retryExisting = await getTenantForUser(userId);
+      if (retryExisting) {
+        return retryExisting;
+      }
+      // If still no tenant, retry with a random suffix
+      const randomSuffix = Math.random().toString(36).substring(2, 8);
+      const tenant = await prisma.tenant.create({
+        data: {
+          name: userName ? `${userName}'s Workspace` : 'My Workspace',
+          slug: `${slug}-${randomSuffix}`,
+          memberships: {
+            create: {
+              userId,
+              role: 'OWNER',
+            },
+          },
+        },
+      });
+      return {
+        tenantId: tenant.id,
+        role: 'OWNER',
+      };
+    }
+    throw error;
+  }
 }
 
 /**

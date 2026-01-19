@@ -1,5 +1,5 @@
 import NextAuth, { type NextAuthConfig } from 'next-auth';
-import KeycloakProvider from 'next-auth/providers/keycloak';
+import GitHubProvider from 'next-auth/providers/github';
 import type { TenantRole } from '@prisma/client';
 
 declare module 'next-auth' {
@@ -21,8 +21,6 @@ declare module 'next-auth' {
 declare module '@auth/core/jwt' {
   interface JWT {
     accessToken?: string;
-    refreshToken?: string;
-    expiresAt?: number;
     error?: string;
     // Multi-tenant context (cached)
     tenantId?: string;
@@ -30,56 +28,11 @@ declare module '@auth/core/jwt' {
   }
 }
 
-async function refreshAccessToken(token: {
-  refreshToken?: string;
-  [key: string]: unknown;
-}) {
-  try {
-    const url = `${process.env.KEYCLOAK_ISSUER}/protocol/openid-connect/token`;
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: new URLSearchParams({
-        client_id: process.env.KEYCLOAK_ID!,
-        grant_type: 'refresh_token',
-        refresh_token: token.refreshToken!,
-      }),
-    });
-
-    const refreshedTokens = await response.json();
-
-    if (!response.ok) {
-      throw refreshedTokens;
-    }
-
-    return {
-      ...token,
-      accessToken: refreshedTokens.access_token,
-      refreshToken: refreshedTokens.refresh_token ?? token.refreshToken,
-      expiresAt: Math.floor(Date.now() / 1000 + refreshedTokens.expires_in),
-    };
-  } catch (error) {
-    console.error('Error refreshing access token', error);
-    return {
-      ...token,
-      error: 'RefreshAccessTokenError',
-    };
-  }
-}
-
 export const authConfig: NextAuthConfig = {
   providers: [
-    KeycloakProvider({
-      clientId: process.env.KEYCLOAK_ID!,
-      clientSecret: process.env.KEYCLOAK_SECRET || '',
-      issuer: process.env.KEYCLOAK_ISSUER,
-      authorization: {
-        params: {
-          scope: 'openid profile email',
-        },
-      },
+    GitHubProvider({
+      clientId: process.env.GITHUB_ID!,
+      clientSecret: process.env.GITHUB_SECRET!,
     }),
   ],
   callbacks: {
@@ -89,18 +42,9 @@ export const authConfig: NextAuthConfig = {
         return {
           ...token,
           accessToken: account.access_token,
-          refreshToken: account.refresh_token,
-          expiresAt: account.expires_at,
         };
       }
-
-      // Return previous token if not expired
-      if (Date.now() < (token.expiresAt ?? 0) * 1000) {
-        return token;
-      }
-
-      // Access token has expired, try to refresh it
-      return refreshAccessToken(token);
+      return token;
     },
     async session({ session, token }) {
       session.accessToken = token.accessToken;
